@@ -20,6 +20,11 @@ class Storage:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(self.path))
         self.connection.row_factory = sqlite3.Row
+        # Tolerate overlapping runs: WAL allows concurrent readers during writes,
+        # and busy_timeout waits for a lock instead of failing immediately.
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA busy_timeout=5000")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
         self._defer_commits = False
         self._initialize()
 

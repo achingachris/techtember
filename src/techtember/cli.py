@@ -125,14 +125,19 @@ def _settings(args: argparse.Namespace):
     return load_settings(args.config, db_override=args.db)
 
 
-def _pipeline(args: argparse.Namespace):
-    settings = _settings(args)
-    client = FirecrawlClient(
+def _client(settings: Settings) -> FirecrawlClient:
+    return FirecrawlClient(
         api_key=settings.api_key,
         max_retries=settings.max_retries,
         backoff_seconds=settings.backoff_seconds,
         request_interval_seconds=settings.request_interval_seconds,
+        operation_timeout_seconds=settings.operation_timeout_seconds,
     )
+
+
+def _pipeline(args: argparse.Namespace):
+    settings = _settings(args)
+    client = _client(settings)
     storage = Storage(settings.database_path)
     pipeline = TechtemberPipeline(
         client=client,
@@ -170,7 +175,21 @@ def _write_run_manifest(
         "summary": _summary_dict(summary),
     }
     manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _prune_run_manifests(runs_dir, settings.max_run_manifests)
     return manifest_path
+
+
+def _prune_run_manifests(runs_dir: Path, keep: int) -> None:
+    """Keep the newest manifests so daily runs don't grow the directory forever."""
+
+    if keep <= 0:
+        return
+    manifests = sorted(runs_dir.glob("*.json"), key=lambda path: path.name, reverse=True)
+    for stale in manifests[keep:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
 
 
 def _selected_search_seeds(
@@ -311,23 +330,13 @@ def _run(args: argparse.Namespace) -> int:
 
     if args.command == "map":
         settings = _settings(args)
-        client = FirecrawlClient(
-            api_key=settings.api_key,
-            max_retries=settings.max_retries,
-            backoff_seconds=settings.backoff_seconds,
-            request_interval_seconds=settings.request_interval_seconds,
-        )
+        client = _client(settings)
         print(json.dumps(client.map(args.url, search=args.search), indent=2))
         return 0
 
     if args.command == "smoke-test":
         settings = _settings(args)
-        client = FirecrawlClient(
-            api_key=settings.api_key,
-            max_retries=settings.max_retries,
-            backoff_seconds=settings.backoff_seconds,
-            request_interval_seconds=settings.request_interval_seconds,
-        )
+        client = _client(settings)
         page = client.scrape(args.url)
         print(
             json.dumps(
@@ -426,9 +435,19 @@ def _run(args: argparse.Namespace) -> int:
         _print_summary(summary)
         manifest_path = _write_run_manifest(settings, args.command, args, summary)
         print("Run manifest: %s" % manifest_path)
-        return 1 if summary.failed else 0
+        return _exit_code(summary)
     finally:
         storage.close()
+
+
+def _exit_code(summary: RunSummary) -> int:
+    """0 = clean, 3 = partial failures with stored results, 1 = nothing succeeded."""
+
+    if not summary.failed:
+        return 0
+    if summary.stored:
+        return 3
+    return 1
 
 
 def main(argv: Optional[List[str]] = None) -> int:

@@ -56,6 +56,25 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(domain_matches("https://ired.com/a", ["wired.com"]))
         self.assertFalse(domain_matches("https://notwired.com/a", ["wired.com"]))
 
+    def test_discover_continues_after_failed_seed(self):
+        class SeedFailingClient(FakeClient):
+            def search(self, query, limit=10, include_domains=None):
+                if query == "broken":
+                    raise RuntimeError("search exploded")
+                return super().search(query, limit=limit, include_domains=include_domains)
+
+        with tempfile.TemporaryDirectory() as directory:
+            with Storage(Path(directory) / "test.db") as storage:
+                pipeline = TechtemberPipeline(
+                    client=SeedFailingClient(),
+                    storage=storage,
+                    terms=["python", "technology"],
+                )
+                summary = pipeline.discover(["broken", "python"], limit=1)
+                self.assertEqual(summary.failed, 1)
+                self.assertEqual(summary.stored, 1)
+                self.assertIn("search 'broken'", summary.errors[0])
+
     def test_discover_scrapes_and_stores_hits(self):
         with tempfile.TemporaryDirectory() as directory:
             with Storage(Path(directory) / "test.db") as storage:

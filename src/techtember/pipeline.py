@@ -101,7 +101,13 @@ class TechtemberPipeline:
             query = query.strip()
             if not query:
                 continue
-            hits = self.client.search(query, limit=limit, include_domains=include_domains)
+            try:
+                hits = self.client.search(query, limit=limit, include_domains=include_domains)
+            except Exception as exc:
+                # One failing seed must not abort the remaining seeds.
+                summary.failed += 1
+                summary.errors.append("search '%s': %s" % (query, exc))
+                continue
             summary.discovered += len(hits)
             with self.storage.bulk():
                 for hit in hits:

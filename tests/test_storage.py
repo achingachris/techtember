@@ -61,6 +61,14 @@ class StorageTests(unittest.TestCase):
                 self.assertEqual(storage.count(), 2)
                 self.assertEqual(len(storage.search("Python")), 2)
 
+    def test_wal_mode_and_busy_timeout_are_enabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with Storage(Path(directory) / "test.db") as storage:
+                mode = storage.connection.execute("PRAGMA journal_mode").fetchone()[0]
+                self.assertEqual(str(mode).lower(), "wal")
+                timeout = storage.connection.execute("PRAGMA busy_timeout").fetchone()[0]
+                self.assertEqual(int(timeout), 5000)
+
     def test_legacy_fts_schema_is_migrated(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "test.db"

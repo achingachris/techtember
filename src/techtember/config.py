@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -27,10 +28,18 @@ def render_search_query(query: str, start_date: Optional[str] = None) -> str:
     """Expand date placeholders used by platform search seeds."""
 
     today = date.today()
+    resolved_start = start_date or os.getenv("TECHTEMBER_START_DATE")
+    if resolved_start is None and "{start_date}" in query:
+        # In unattended runs a missing start date silently narrows results to today.
+        print(
+            "Warning: {start_date} used but TECHTEMBER_START_DATE is not set; "
+            "defaulting to today (%s)" % today.isoformat(),
+            file=sys.stderr,
+        )
     values = {
         "today": today.isoformat(),
         "year": str(today.year),
-        "start_date": start_date or os.getenv("TECHTEMBER_START_DATE") or today.isoformat(),
+        "start_date": resolved_start or today.isoformat(),
     }
     rendered = query
     for key, value in values.items():
@@ -112,6 +121,8 @@ class Settings:
     max_retries: int = 2
     backoff_seconds: float = 1.0
     request_interval_seconds: float = 0.25
+    operation_timeout_seconds: float = 300.0
+    max_run_manifests: int = 200
     store_raw_json: bool = True
 
 
@@ -237,5 +248,7 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         max_retries=int(config.get("max_retries", 2)),
         backoff_seconds=float(config.get("backoff_seconds", 1.0)),
         request_interval_seconds=float(config.get("request_interval_seconds", 0.25)),
+        operation_timeout_seconds=float(config.get("operation_timeout_seconds", 300.0)),
+        max_run_manifests=int(config.get("max_run_manifests", 200)),
         store_raw_json=bool(config.get("store_raw_json", True)),
     )
