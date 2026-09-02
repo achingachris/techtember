@@ -1,15 +1,16 @@
 {
-  "title": "agentic AI is eating the power budget, and Africa is quietly building the pipes for it",
-  "description": "NVIDIA wants 30x more work per watt, agents burn 15x more tokens than a chat message, and Kenya just joined a 24-country digital club. here's how it all connects.",
+  "title": "agentic AI's real bottleneck is watts, and africa is quietly building its own supply",
+  "description": "a lightning tour through this run's crawl: why agentic AI is a power problem in disguise, why africa's data center buildout is finally showing up in the numbers, and why your fintech app's biggest competitor might be a supermarket chain.",
   "tags": [
     "ai-infrastructure",
     "agentic-ai",
     "africa-tech",
+    "fintech",
     "cybersecurity",
-    "cloud-computing"
+    "kenya"
   ],
   "author": "Chris Achinga",
-  "generated": "2026-09-02T17:06:42.766522+00:00",
+  "generated": "2026-09-02T18:43:03.345164+00:00",
   "date": "2026-09-02",
   "run": "5",
   "pages": 25
