@@ -9,7 +9,8 @@ Modes:
     run    - write one article covering pages fetched today (per crawl run)
     digest - write the end-of-day article referencing today's run articles
 
-Uses only the standard library so it runs in CI without extra dependencies.
+Articles are written by the GitHub Copilot CLI agent (npm i -g @github/copilot)
+running in programmatic mode, billed to the repo owner's Copilot subscription.
 """
 
 import argparse
@@ -20,12 +21,10 @@ import re
 import sqlite3
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-MODELS_URL = "https://models.github.ai/inference/chat/completions"
-DEFAULT_MODEL = "openai/gpt-4o"
+COPILOT_BIN = os.getenv("COPILOT_CLI_BIN", "copilot")
+DEFAULT_MODEL = os.getenv("ARTICLE_MODEL", "")  # empty = Copilot CLI's default model
 MAX_PAGES = 25
 EXCERPT_CHARS = 1200
 QA_SCRIPT = Path(__file__).parent / "article_writer" / "qa_check.py"
@@ -84,29 +83,36 @@ def _pages_for_day(db_path: Path, day: str):
     return rows
 
 
-def _call_model(token: str, model: str, messages) -> str:
-    payload = json.dumps(
-        {"model": model, "messages": messages, "temperature": 0.4, "max_tokens": 4000}
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        MODELS_URL,
-        data=payload,
-        headers={
-            "Authorization": "Bearer %s" % token,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
+def _call_model(model: str, prompt: str, out_path: Path) -> str:
+    """Run the Copilot CLI agent in programmatic mode and read its JSON output file."""
+
+    if out_path.exists():
+        out_path.unlink()
+    full_prompt = (
+        "%s\n\nInstead of replying in chat, write ONLY the JSON object to the file "
+        "%s (create it if needed). Do not create or modify any other files."
+        % (prompt, out_path)
     )
+    command = [COPILOT_BIN, "-p", full_prompt, "--allow-all-tools"]
+    if model:
+        command += ["--model", model]
     try:
-        with urllib.request.urlopen(request, timeout=300) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")[:2000]
-        raise SystemExit("Model API error %s: %s" % (exc.code, detail))
-    content = body["choices"][0]["message"]["content"]
-    if not content or not content.strip():
-        raise SystemExit("Model returned an empty response")
+        result = subprocess.run(command, capture_output=True, text=True, timeout=1800)
+    except FileNotFoundError:
+        raise SystemExit(
+            "Copilot CLI not found; install it with: npm install -g @github/copilot"
+        )
+    if out_path.exists():
+        content = out_path.read_text(encoding="utf-8")
+        out_path.unlink()
+    else:
+        # Fall back to the chat transcript if the agent answered inline.
+        content = result.stdout or ""
+    if not content.strip():
+        raise SystemExit(
+            "Copilot CLI returned no article (exit %d): %s"
+            % (result.returncode, (result.stderr or result.stdout or "")[-2000:])
+        )
     return content.strip()
 
 
@@ -186,30 +192,24 @@ def _write_bundle(bundle_dir: Path, data: dict, extra_meta: dict) -> Path:
     return index_path
 
 
-def _generate(token: str, model: str, user_prompt: str, bundle_dir: Path, extra_meta: dict) -> Path:
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-    raw = _call_model(token, model, messages)
+def _generate(model: str, user_prompt: str, bundle_dir: Path, extra_meta: dict) -> Path:
+    out_path = Path(".article-output.json")
+    prompt = "%s\n\n%s" % (SYSTEM_PROMPT, user_prompt)
+    raw = _call_model(model, prompt, out_path)
     data = _parse_article_json(raw)
     index_path = _write_bundle(bundle_dir, data, extra_meta)
 
     code, report = _qa_check(index_path, str(data["title"]))
     if code != 0:
-        # One repair round: hand the QA failures back to the model.
+        # One repair round: hand the QA failures back to the agent.
         print("QA failures, requesting a fix:\n%s" % report)
-        messages.append({"role": "assistant", "content": raw})
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "The QA checker found these problems:\n%s\n\nFix every FAIL and return "
-                    "the corrected article as the same JSON object, nothing else." % report
-                ),
-            }
+        repair_prompt = (
+            "%s\n\nYou previously produced this article JSON:\n%s\n\nThe QA checker "
+            "found these problems:\n%s\n\nFix every FAIL and return the corrected "
+            "article as the same JSON object, nothing else."
+            % (SYSTEM_PROMPT, json.dumps(data, ensure_ascii=False), report)
         )
-        data = _parse_article_json(_call_model(token, model, messages))
+        data = _parse_article_json(_call_model(model, repair_prompt, out_path))
         index_path = _write_bundle(bundle_dir, data, extra_meta)
         code, report = _qa_check(index_path, str(data["title"]))
     print("QA report for %s:\n%s" % (index_path, report))
@@ -220,7 +220,7 @@ def _generate(token: str, model: str, user_prompt: str, bundle_dir: Path, extra_
     return index_path
 
 
-def _run_article(args, token: str) -> Path:
+def _run_article(args) -> Path:
     day = args.date or _today()
     pages = _pages_for_day(Path(args.db), day)
     if not pages:
@@ -245,7 +245,6 @@ def _run_article(args, token: str) -> Path:
     )
     bundle_dir = Path(args.articles_dir) / day / ("run-%s" % args.run_label)
     return _generate(
-        token,
         args.model,
         user_prompt,
         bundle_dir,
@@ -253,7 +252,7 @@ def _run_article(args, token: str) -> Path:
     )
 
 
-def _digest_article(args, token: str) -> Path:
+def _digest_article(args) -> Path:
     day = args.date or _today()
     day_dir = Path(args.articles_dir) / day
     run_files = sorted(day_dir.glob("run-*/index.md")) if day_dir.exists() else []
@@ -281,7 +280,7 @@ def _digest_article(args, token: str) -> Path:
         "type": "daily-digest",
         "source_articles": [p.parent.name for p in run_files],
     }
-    return _generate(token, args.model, user_prompt, bundle_dir, extra_meta)
+    return _generate(args.model, user_prompt, bundle_dir, extra_meta)
 
 
 def main() -> int:
@@ -294,15 +293,20 @@ def main() -> int:
     parser.add_argument("--model", default=os.getenv("ARTICLE_MODEL", DEFAULT_MODEL))
     args = parser.parse_args()
 
-    token = os.getenv("GITHUB_TOKEN") or os.getenv("MODELS_TOKEN")
-    if not token:
-        print("GITHUB_TOKEN is required for the GitHub Models API", file=sys.stderr)
+    if not any(
+        os.getenv(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")
+    ):
+        print(
+            "COPILOT_GITHUB_TOKEN (or GH_TOKEN/GITHUB_TOKEN) is required for the "
+            "Copilot CLI",
+            file=sys.stderr,
+        )
         return 2
 
     if args.mode == "run":
-        path = _run_article(args, token)
+        path = _run_article(args)
     else:
-        path = _digest_article(args, token)
+        path = _digest_article(args)
     print("Wrote %s" % path)
     return 0
 

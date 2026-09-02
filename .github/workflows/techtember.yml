@@ -16,7 +16,6 @@ on:
 
 permissions:
   contents: write
-  models: read
 
 concurrency:
   group: techtember-runs
@@ -73,6 +72,10 @@ jobs:
             echo "digest=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install Copilot CLI
+        if: steps.window.outputs.active == 'true'
+        run: npm install -g @github/copilot
+
       - name: Crawl and store
         if: steps.window.outputs.active == 'true'
         env:
@@ -92,7 +95,7 @@ jobs:
       - name: Generate run article
         if: steps.window.outputs.active == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         run: |
           uv run python scripts/generate_article.py run \
             --run-label "${{ steps.slot.outputs.run }}"
@@ -100,7 +103,7 @@ jobs:
       - name: Generate daily digest
         if: steps.window.outputs.active == 'true' && steps.slot.outputs.digest == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         run: |
           uv run python scripts/generate_article.py digest
 
