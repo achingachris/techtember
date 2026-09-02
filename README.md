@@ -122,7 +122,18 @@ uv run techtember crawl-sites --limit 3
 
 `run-all` uses all configured `search_terms` first and then crawls all enabled `crawl_sites`. Its `--limit` overrides both the number of results per search and the maximum pages per site. Disable a source or remove a search term in `config/seeds.json` when it should not run.
 
-Collection commands also write a small audit manifest under `data/runs/` containing the command arguments and counts. Raw page responses are retained in the database's `raw_json` column; the database itself is ignored by Git.
+Collection commands also write a small audit manifest under `data/runs/` containing the command arguments and counts. Raw page responses are retained in the database's `raw_json` column. `data/techtember.db` is committed by the scheduled workflow so runs accumulate; WAL sidecar files and manifests stay ignored.
+
+## Scheduled runs (September)
+
+`.github/workflows/techtember.yml` runs five times a day in Kenyan time (06:00, 10:00, 14:00, 18:00, 22:00 EAT) until 30 September:
+
+1. Crawl all configured searches and sites (`techtember run-all`) and commit the updated database.
+2. Generate one technical article per run from that day's pages (`scripts/generate_article.py run`), written to `articles/<date>/run-<n>.md` using the GitHub Models API.
+3. The 22:00 EAT run additionally writes `articles/<date>/daily-digest.md`, a final article referencing the day's earlier run articles.
+
+Requirements: add the `FIRECRAWL_API_KEY` repository secret. Articles use the built-in `GITHUB_TOKEN` (`models: read`). Commits are authored as `achinga.chris@gmail.com`.
+
 
 ## Architecture
 
