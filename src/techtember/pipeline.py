@@ -1,0 +1,144 @@
+"""Collection orchestration for Techtember."""
+
+from dataclasses import dataclass, field
+from typing import Iterable, List, Optional, Set
+from urllib.parse import urlsplit
+
+from .firecrawl_client import FirecrawlClient
+from .models import FetchedPage, PageRecord
+from .normalize import canonicalize_url, normalize_fetched_page, normalize_search_hit
+from .storage import Storage
+
+
+def domain_matches(url: str, excluded_domains: Iterable[str]) -> bool:
+    hostname = (urlsplit(url).hostname or "").lower().lstrip("www.")
+    for excluded in excluded_domains:
+        excluded = excluded.lower().strip().lstrip("www.")
+        if excluded and (hostname == excluded or hostname.endswith("." + excluded)):
+            return True
+    return False
+
+
+@dataclass
+class RunSummary:
+    discovered: int = 0
+    fetched: int = 0
+    stored: int = 0
+    skipped: int = 0
+    failed: int = 0
+    errors: List[str] = field(default_factory=list)
+
+
+class TechtemberPipeline:
+    def __init__(
+        self,
+        client: FirecrawlClient,
+        storage: Storage,
+        terms: Iterable[str],
+        exclude_domains: Iterable[str] = (),
+        include_domains: Iterable[str] = (),
+    ) -> None:
+        self.client = client
+        self.storage = storage
+        self.terms = list(terms)
+        self.exclude_domains = list(exclude_domains)
+        self.include_domains = list(include_domains)
+
+    def _accept(self, url: str) -> bool:
+        return bool(url) and not domain_matches(url, self.exclude_domains)
+
+    def ingest_page(
+        self,
+        page: FetchedPage,
+        source: str,
+        query: str = "",
+        min_score: float = 0.0,
+    ) -> Optional[PageRecord]:
+        if not self._accept(page.url):
+            return None
+        record = normalize_fetched_page(page, source=source, query=query, terms=self.terms)
+        if not record.canonical_url or record.relevance_score < min_score:
+            return None
+        self.storage.upsert(record)
+        return record
+
+    def discover(
+        self,
+        queries: Iterable[str],
+        limit: int = 10,
+        min_score: float = 0.0,
+    ) -> RunSummary:
+        summary = RunSummary()
+        seen: Set[str] = set()
+        for query in queries:
+            query = query.strip()
+            if not query:
+                continue
+            hits = self.client.search(query, limit=limit, include_domains=self.include_domains)
+            summary.discovered += len(hits)
+            for hit in hits:
+                key = canonicalize_url(hit.url)
+                if not key or key in seen or not self._accept(hit.url):
+                    summary.skipped += 1
+                    continue
+                seen.add(key)
+                try:
+                    if hit.markdown:
+                        page = FetchedPage(
+                            url=hit.url,
+                            markdown=hit.markdown,
+                            metadata=hit.metadata,
+                            raw=hit.raw,
+                        )
+                    else:
+                        page = self.client.scrape(hit.url)
+                    summary.fetched += 1
+                    if self.ingest_page(page, source="search", query=query, min_score=min_score):
+                        summary.stored += 1
+                    else:
+                        summary.skipped += 1
+                except Exception as exc:
+                    summary.failed += 1
+                    summary.errors.append("%s: %s" % (hit.url, exc))
+        return summary
+
+    def scrape(
+        self,
+        url: str,
+        source: str = "scrape",
+        query: str = "",
+        min_score: float = 0.0,
+    ) -> RunSummary:
+        summary = RunSummary()
+        try:
+            page = self.client.scrape(url)
+            summary.fetched = 1
+            if self.ingest_page(page, source=source, query=query, min_score=min_score):
+                summary.stored = 1
+            else:
+                summary.skipped = 1
+        except Exception as exc:
+            summary.failed = 1
+            summary.errors.append("%s: %s" % (url, exc))
+        return summary
+
+    def crawl(self, url: str, limit: int = 25, min_score: float = 0.0) -> RunSummary:
+        summary = RunSummary()
+        try:
+            pages = self.client.crawl(url, limit=limit)
+            summary.discovered = len(pages)
+            for page in pages:
+                try:
+                    summary.fetched += 1
+                    if self.ingest_page(page, source="crawl", min_score=min_score):
+                        summary.stored += 1
+                    else:
+                        summary.skipped += 1
+                except Exception as exc:
+                    summary.failed += 1
+                    summary.errors.append("%s: %s" % (page.url, exc))
+        except Exception as exc:
+            summary.failed = 1
+            summary.errors.append("%s: %s" % (url, exc))
+        return summary
+

@@ -1,0 +1,32 @@
+{
+  "queries": [
+    "Techtember technology",
+    "software engineering trends",
+    "developer tools and AI"
+  ],
+  "terms": [
+    "technology",
+    "software",
+    "engineering",
+    "developer",
+    "programming",
+    "artificial intelligence",
+    "machine learning",
+    "cloud",
+    "cybersecurity",
+    "data",
+    "startup",
+    "open source"
+  ],
+  "include_domains": [],
+  "exclude_domains": [
+    "facebook.com",
+    "instagram.com",
+    "tiktok.com"
+  ],
+  "database_path": "data/techtember.db",
+  "max_search_results": 50,
+  "max_crawl_pages": 100,
+  "min_relevance_score": 0.0
+}
+
