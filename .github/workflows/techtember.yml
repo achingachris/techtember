@@ -1,0 +1,118 @@
+name: Techtember daily runs
+
+# 5 crawl+article runs per day, Kenyan time (EAT = UTC+3, no DST):
+#   06:00, 10:00, 14:00, 18:00, 22:00 EAT -> 03,07,11,15,19 UTC.
+# The 22:00 EAT run also generates the end-of-day digest article.
+# Active through 30 September only (guarded in the first step).
+on:
+  schedule:
+    - cron: "0 3,7,11,15,19 * * *"
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Also generate the daily digest"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  models: read
+
+concurrency:
+  group: techtember-runs
+  cancel-in-progress: false
+
+jobs:
+  crawl-and-write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      TZ: Africa/Nairobi
+      GIT_AUTHOR_NAME: Chris Achinga
+      GIT_AUTHOR_EMAIL: achinga.chris@gmail.com
+      GIT_COMMITTER_NAME: Chris Achinga
+      GIT_COMMITTER_EMAIL: achinga.chris@gmail.com
+    steps:
+      - name: Stop after September
+        id: window
+        run: |
+          today=$(date -u +%Y-%m-%d)
+          if [[ "$today" > "2026-09-30" ]]; then
+            echo "Past 30 September; skipping run."
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.window.outputs.active == 'true'
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        if: steps.window.outputs.active == 'true'
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Determine run number (EAT)
+        if: steps.window.outputs.active == 'true'
+        id: slot
+        run: |
+          hour=$(TZ=Africa/Nairobi date +%H)
+          case "$hour" in
+            0[0-7]) run=1 ;;   # 06:00 EAT
+            0[8-9]|1[0-1]) run=2 ;;   # 10:00 EAT
+            1[2-5]) run=3 ;;   # 14:00 EAT
+            1[6-9]) run=4 ;;   # 18:00 EAT
+            *) run=5 ;;        # 22:00 EAT (final run of the day)
+          esac
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          if [[ "$run" == "5" || "${{ inputs.digest }}" == "true" ]]; then
+            echo "digest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "digest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Crawl and store
+        if: steps.window.outputs.active == 'true'
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          TECHTEMBER_START_DATE: "2026-09-01"
+        run: |
+          set +e
+          uv run techtember run-all
+          code=$?
+          set -e
+          # 0 = clean, 3 = partial failures but data stored; both are usable.
+          if [[ "$code" != "0" && "$code" != "3" ]]; then
+            echo "Crawl failed with exit code $code"
+            exit "$code"
+          fi
+
+      - name: Generate run article
+        if: steps.window.outputs.active == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python scripts/generate_article.py run \
+            --run-label "${{ steps.slot.outputs.run }}"
+
+      - name: Generate daily digest
+        if: steps.window.outputs.active == 'true' && steps.slot.outputs.digest == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python scripts/generate_article.py digest
+
+      - name: Commit results
+        if: steps.window.outputs.active == 'true'
+        run: |
+          git add data articles
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          day=$(TZ=Africa/Nairobi date +%Y-%m-%d)
+          git commit -m "Techtember $day run ${{ steps.slot.outputs.run }}: crawl data and article"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

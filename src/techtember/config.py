@@ -2,11 +2,11 @@
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
-
 
 DEFAULT_TERMS = [
     "technology",
@@ -28,10 +28,18 @@ def render_search_query(query: str, start_date: Optional[str] = None) -> str:
     """Expand date placeholders used by platform search seeds."""
 
     today = date.today()
+    resolved_start = start_date or os.getenv("TECHTEMBER_START_DATE")
+    if resolved_start is None and "{start_date}" in query:
+        # In unattended runs a missing start date silently narrows results to today.
+        print(
+            "Warning: {start_date} used but TECHTEMBER_START_DATE is not set; "
+            "defaulting to today (%s)" % today.isoformat(),
+            file=sys.stderr,
+        )
     values = {
         "today": today.isoformat(),
         "year": str(today.year),
-        "start_date": start_date or os.getenv("TECHTEMBER_START_DATE") or today.isoformat(),
+        "start_date": resolved_start or today.isoformat(),
     }
     rendered = query
     for key, value in values.items():
@@ -50,7 +58,10 @@ def load_dotenv(path: Path) -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        value = value.strip().strip("'\"")
+        value = value.strip()
+        # Only remove one matched pair of surrounding quotes.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
         if key and key not in os.environ:
             os.environ[key] = value
 
@@ -112,6 +123,9 @@ class Settings:
     max_retries: int = 2
     backoff_seconds: float = 1.0
     request_interval_seconds: float = 0.25
+    operation_timeout_seconds: float = 300.0
+    max_run_manifests: int = 200
+    store_raw_json: bool = True
     fallback_enabled: bool = True
     fallback_timeout_seconds: float = 20.0
     searxng_url: Optional[str] = None
@@ -166,6 +180,9 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         if not query:
             raise ValueError("search_terms[%d] is missing query" % index)
         platform = str(entry.get("platform", "web")).strip().lower() or "web"
+        if platform == "twitter":
+            # Canonicalize the alias so platform filters behave consistently.
+            platform = "x"
         include_domains = domain_list(entry.get("include_domains"), "search_terms.include_domains")
         if not include_domains:
             include_domains = list(platform_domains.get(platform, []))
@@ -253,6 +270,9 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         max_retries=int(config.get("max_retries", 2)),
         backoff_seconds=float(config.get("backoff_seconds", 1.0)),
         request_interval_seconds=float(config.get("request_interval_seconds", 0.25)),
+        operation_timeout_seconds=float(config.get("operation_timeout_seconds", 300.0)),
+        max_run_manifests=int(config.get("max_run_manifests", 200)),
+        store_raw_json=bool(config.get("store_raw_json", True)),
         fallback_enabled=bool_value(
             os.getenv("TECHTEMBER_FALLBACK_ENABLED", config.get("fallback_enabled", True)),
             "fallback_enabled",

@@ -1,3 +1,4 @@
+import time
 import unittest
 
 from techtember.firecrawl_client import FirecrawlClient
@@ -31,6 +32,12 @@ class FlakyClient:
         if self.calls < 3:
             raise RuntimeError("temporary failure")
         return {"web": [{"url": "https://example.com/recovered"}]}
+
+
+class HangingClient:
+    def search(self, query, limit=None, **kwargs):
+        time.sleep(5)
+        return {"web": []}
 
 
 class AdapterTests(unittest.TestCase):
@@ -69,6 +76,17 @@ class AdapterTests(unittest.TestCase):
         client = FirecrawlClient(client=fake, max_retries=2, backoff_seconds=0)
         self.assertEqual(client.search("example")[0].url, "https://example.com/recovered")
         self.assertEqual(fake.calls, 3)
+
+    def test_hung_operations_time_out(self):
+        client = FirecrawlClient(
+            client=HangingClient(),
+            max_retries=0,
+            operation_timeout_seconds=0.1,
+        )
+        started = time.monotonic()
+        with self.assertRaises(TimeoutError):
+            client.search("example")
+        self.assertLess(time.monotonic() - started, 2.0)
 
 
 if __name__ == "__main__":

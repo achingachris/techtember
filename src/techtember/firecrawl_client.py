@@ -5,10 +5,11 @@ keeps SDK response-shape differences out of the storage and normalization layers
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, TypeVar
 
 from .models import FetchedPage, SearchHit
-
 
 T = TypeVar("T")
 
@@ -111,10 +112,12 @@ class FirecrawlClient:
         max_retries: int = 2,
         backoff_seconds: float = 1.0,
         request_interval_seconds: float = 0.0,
+        operation_timeout_seconds: float = 300.0,
     ) -> None:
         self.max_retries = max(0, max_retries)
         self.backoff_seconds = max(0.0, backoff_seconds)
         self.request_interval_seconds = max(0.0, request_interval_seconds)
+        self.operation_timeout_seconds = max(0.0, operation_timeout_seconds)
         self._last_request_at = 0.0
         if client is not None:
             self._client = client
@@ -135,6 +138,25 @@ class FirecrawlClient:
             ) from exc
         self._client = Firecrawl(api_key=api_key)
 
+    def _invoke(self, operation: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+        """Run one SDK call, bounded by the operation timeout so runs never hang."""
+
+        if self.operation_timeout_seconds <= 0:
+            return operation(*args, **kwargs)
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(operation, *args, **kwargs)
+        try:
+            return future.result(timeout=self.operation_timeout_seconds)
+        except FutureTimeoutError:
+            # Abandon the stuck thread; do not block shutdown waiting for it.
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise TimeoutError(
+                "Firecrawl operation timed out after %.0f seconds"
+                % self.operation_timeout_seconds
+            ) from None
+        finally:
+            executor.shutdown(wait=False)
+
     def _call(self, operation: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         """Call the SDK with bounded retries and a polite request interval."""
 
@@ -144,7 +166,7 @@ class FirecrawlClient:
                 time.sleep(self.request_interval_seconds - elapsed)
             try:
                 self._last_request_at = time.monotonic()
-                return operation(*args, **kwargs)
+                return self._invoke(operation, *args, **kwargs)
             except (AttributeError, TypeError):
                 # These errors indicate an SDK interface mismatch, not a transient request.
                 raise
@@ -162,11 +184,7 @@ class FirecrawlClient:
     ) -> List[SearchHit]:
         kwargs: Dict[str, Any] = {"limit": limit}
         search_query = _add_domain_filters(query, include_domains or [])
-        try:
-            result = self._call(self._client.search, search_query, **kwargs)
-        except TypeError:
-            # Some older SDKs expose fewer optional parameters than the current client.
-            result = self._call(self._client.search, search_query, limit=limit)
+        result = self._call(self._client.search, search_query, **kwargs)
         hits: List[SearchHit] = []
         for item in _results(result, "web"):
             item = _mapping(item)

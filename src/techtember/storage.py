@@ -5,8 +5,9 @@ import json
 import re
 import sqlite3
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, TextIO
+from typing import Any, Dict, Iterable, Iterator, List, TextIO
 
 from .models import PageRecord
 
@@ -19,6 +20,12 @@ class Storage:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(self.path))
         self.connection.row_factory = sqlite3.Row
+        # Tolerate overlapping runs: WAL allows concurrent readers during writes,
+        # and busy_timeout waits for a lock instead of failing immediately.
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA busy_timeout=5000")
+        self.connection.execute("PRAGMA synchronous=NORMAL")
+        self._defer_commits = False
         self._initialize()
 
     def _initialize(self) -> None:
@@ -45,17 +52,104 @@ class Storage:
                 raw_json TEXT NOT NULL DEFAULT '{}'
             );
 
+            CREATE INDEX IF NOT EXISTS idx_pages_fetched_at ON pages (fetched_at DESC);
+            """
+        )
+        self._migrate_legacy_fts()
+        self.connection.executescript(
+            """
+            -- External-content FTS avoids duplicating markdown in the index.
             CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
-                page_id UNINDEXED,
                 title,
                 description,
                 markdown,
-                technologies,
-                topics
+                technologies_json,
+                topics_json,
+                content='pages',
+                content_rowid='id'
             );
+
+            CREATE TRIGGER IF NOT EXISTS pages_fts_after_insert AFTER INSERT ON pages BEGIN
+                INSERT INTO pages_fts (
+                    rowid, title, description, markdown, technologies_json, topics_json
+                ) VALUES (
+                    new.id, new.title, new.description, new.markdown,
+                    new.technologies_json, new.topics_json
+                );
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS pages_fts_after_delete AFTER DELETE ON pages BEGIN
+                INSERT INTO pages_fts (
+                    pages_fts, rowid, title, description, markdown,
+                    technologies_json, topics_json
+                ) VALUES (
+                    'delete', old.id, old.title, old.description, old.markdown,
+                    old.technologies_json, old.topics_json
+                );
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS pages_fts_after_update AFTER UPDATE ON pages BEGIN
+                INSERT INTO pages_fts (
+                    pages_fts, rowid, title, description, markdown,
+                    technologies_json, topics_json
+                ) VALUES (
+                    'delete', old.id, old.title, old.description, old.markdown,
+                    old.technologies_json, old.topics_json
+                );
+                INSERT INTO pages_fts (
+                    rowid, title, description, markdown, technologies_json, topics_json
+                ) VALUES (
+                    new.id, new.title, new.description, new.markdown,
+                    new.technologies_json, new.topics_json
+                );
+            END;
             """
         )
         self.connection.commit()
+
+    def _migrate_legacy_fts(self) -> None:
+        """Rebuild the index when an older, content-duplicating pages_fts exists."""
+
+        row = self.connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pages_fts'"
+        ).fetchone()
+        if row is None or "content='pages'" in (row[0] or ""):
+            return
+        self.connection.executescript(
+            """
+            DROP TABLE pages_fts;
+
+            CREATE VIRTUAL TABLE pages_fts USING fts5(
+                title,
+                description,
+                markdown,
+                technologies_json,
+                topics_json,
+                content='pages',
+                content_rowid='id'
+            );
+
+            INSERT INTO pages_fts(pages_fts) VALUES('rebuild');
+            """
+        )
+
+    def _commit(self) -> None:
+        if not self._defer_commits:
+            self.connection.commit()
+
+    @contextmanager
+    def bulk(self) -> Iterator["Storage"]:
+        """Defer commits across many upserts and commit once at the end."""
+
+        self._defer_commits = True
+        try:
+            yield self
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+        finally:
+            self._defer_commits = False
 
     def close(self) -> None:
         self.connection.close()
@@ -129,22 +223,7 @@ class Storage:
         if row is None:
             raise RuntimeError("Page upsert did not return a row")
         page_id = int(row[0])
-        self.connection.execute("DELETE FROM pages_fts WHERE page_id = ?", (str(page_id),))
-        self.connection.execute(
-            """
-            INSERT INTO pages_fts (page_id, title, description, markdown, technologies, topics)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                str(page_id),
-                record.title,
-                record.description,
-                record.markdown,
-                " ".join(record.technologies),
-                " ".join(record.topics),
-            ),
-        )
-        self.connection.commit()
+        self._commit()
         return page_id
 
     def count(self) -> int:
@@ -166,7 +245,7 @@ class Storage:
             """
             SELECT p.*
             FROM pages_fts f
-            JOIN pages p ON p.id = CAST(f.page_id AS INTEGER)
+            JOIN pages p ON p.id = f.rowid
             WHERE pages_fts MATCH ?
             ORDER BY p.relevance_score DESC, p.fetched_at DESC
             LIMIT ?

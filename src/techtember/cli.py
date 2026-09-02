@@ -164,6 +164,7 @@ def _primary_client(settings: Settings) -> FirecrawlClient:
         max_retries=settings.max_retries,
         backoff_seconds=settings.backoff_seconds,
         request_interval_seconds=settings.request_interval_seconds,
+        operation_timeout_seconds=settings.operation_timeout_seconds,
     )
 
 
@@ -200,6 +201,7 @@ def _pipeline(args: argparse.Namespace):
         terms=settings.terms,
         exclude_domains=settings.exclude_domains,
         include_domains=settings.include_domains,
+        store_raw=settings.store_raw_json,
     )
     return settings, storage, pipeline
 
@@ -229,7 +231,21 @@ def _write_run_manifest(
         "summary": _summary_dict(summary),
     }
     manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _prune_run_manifests(runs_dir, settings.max_run_manifests)
     return manifest_path
+
+
+def _prune_run_manifests(runs_dir: Path, keep: int) -> None:
+    """Keep the newest manifests so daily runs don't grow the directory forever."""
+
+    if keep <= 0:
+        return
+    manifests = sorted(runs_dir.glob("*.json"), key=lambda path: path.name, reverse=True)
+    for stale in manifests[keep:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
 
 
 def _write_article_brief(
@@ -261,8 +277,11 @@ def _write_article_brief(
 def _selected_search_seeds(
     settings: Settings, queries: List[str], platform: str
 ) -> List[SearchSeed]:
+    # "twitter" is an alias of "x"; seeds are stored canonically as "x".
+    if platform == "twitter":
+        platform = "x"
     if queries:
-        include_domains = ["x.com", "twitter.com"] if platform in {"x", "twitter"} else []
+        include_domains = ["x.com", "twitter.com"] if platform == "x" else []
         return [
             SearchSeed(
                 name=query,
@@ -274,11 +293,7 @@ def _selected_search_seeds(
         ]
     if platform == "all":
         return list(settings.search_seeds)
-    return [
-        seed
-        for seed in settings.search_seeds
-        if seed.platform == platform or (platform == "x" and seed.platform == "twitter")
-    ]
+    return [seed for seed in settings.search_seeds if seed.platform == platform]
 
 
 def _configured_site_min_score(
@@ -564,9 +579,19 @@ def _run(args: argparse.Namespace) -> int:
                 for operation, count in sorted(fallback_uses.items())
             )
             print("Fallback providers used: %s" % providers, file=sys.stderr)
-        return 1 if summary.failed else 0
+        return _exit_code(summary)
     finally:
         storage.close()
+
+
+def _exit_code(summary: RunSummary) -> int:
+    """0 = clean, 3 = partial failures with stored results, 1 = nothing succeeded."""
+
+    if not summary.failed:
+        return 0
+    if summary.stored:
+        return 3
+    return 1
 
 
 def main(argv: Optional[List[str]] = None) -> int:

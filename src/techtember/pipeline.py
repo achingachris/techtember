@@ -7,14 +7,18 @@ from urllib.parse import urlsplit
 from .config import SearchSeed, render_search_query
 from .firecrawl_client import FirecrawlClient
 from .models import FetchedPage, PageRecord
-from .normalize import canonicalize_url, normalize_fetched_page, normalize_search_hit
+from .normalize import canonicalize_url, normalize_fetched_page
 from .storage import Storage
 
 
+def _strip_www(hostname: str) -> str:
+    return hostname[4:] if hostname.startswith("www.") else hostname
+
+
 def domain_matches(url: str, excluded_domains: Iterable[str]) -> bool:
-    hostname = (urlsplit(url).hostname or "").lower().lstrip("www.")
+    hostname = _strip_www((urlsplit(url).hostname or "").lower())
     for excluded in excluded_domains:
-        excluded = excluded.lower().strip().lstrip("www.")
+        excluded = _strip_www(excluded.lower().strip())
         if excluded and (hostname == excluded or hostname.endswith("." + excluded)):
             return True
     return False
@@ -46,12 +50,14 @@ class TechtemberPipeline:
         terms: Iterable[str],
         exclude_domains: Iterable[str] = (),
         include_domains: Iterable[str] = (),
+        store_raw: bool = True,
     ) -> None:
         self.client = client
         self.storage = storage
         self.terms = list(terms)
         self.exclude_domains = list(exclude_domains)
         self.include_domains = list(include_domains)
+        self.store_raw = store_raw
 
     def with_client(self, client: Any) -> "TechtemberPipeline":
         """Return a pipeline sharing storage and rules but using another provider."""
@@ -76,7 +82,13 @@ class TechtemberPipeline:
     ) -> Optional[PageRecord]:
         if not self._accept(page.url):
             return None
-        record = normalize_fetched_page(page, source=source, query=query, terms=self.terms)
+        record = normalize_fetched_page(
+            page,
+            source=source,
+            query=query,
+            terms=self.terms,
+            include_raw=self.store_raw,
+        )
         if not record.canonical_url or record.relevance_score < min_score:
             return None
         self.storage.upsert(record)
@@ -100,32 +112,41 @@ class TechtemberPipeline:
             query = query.strip()
             if not query:
                 continue
-            hits = self.client.search(query, limit=limit, include_domains=include_domains)
+            try:
+                hits = self.client.search(query, limit=limit, include_domains=include_domains)
+            except Exception as exc:
+                # One failing seed must not abort the remaining seeds.
+                summary.failed += 1
+                summary.errors.append("search '%s': %s" % (query, exc))
+                continue
             summary.discovered += len(hits)
-            for hit in hits:
-                key = canonicalize_url(hit.url)
-                if not key or key in seen or not self._accept(hit.url):
-                    summary.skipped += 1
-                    continue
-                seen.add(key)
-                try:
-                    if hit.markdown:
-                        page = FetchedPage(
-                            url=hit.url,
-                            markdown=hit.markdown,
-                            metadata=hit.metadata,
-                            raw=hit.raw,
-                        )
-                    else:
-                        page = self.client.scrape(hit.url)
-                    summary.fetched += 1
-                    if self.ingest_page(page, source="search", query=query, min_score=min_score):
-                        summary.stored += 1
-                    else:
+            with self.storage.bulk():
+                for hit in hits:
+                    key = canonicalize_url(hit.url)
+                    if not key or key in seen or not self._accept(hit.url):
                         summary.skipped += 1
-                except Exception as exc:
-                    summary.failed += 1
-                    summary.errors.append("%s: %s" % (hit.url, exc))
+                        continue
+                    seen.add(key)
+                    try:
+                        if hit.markdown:
+                            page = FetchedPage(
+                                url=hit.url,
+                                markdown=hit.markdown,
+                                metadata=hit.metadata,
+                                raw=hit.raw,
+                            )
+                        else:
+                            page = self.client.scrape(hit.url)
+                        summary.fetched += 1
+                        if self.ingest_page(
+                            page, source="search", query=query, min_score=min_score
+                        ):
+                            summary.stored += 1
+                        else:
+                            summary.skipped += 1
+                    except Exception as exc:
+                        summary.failed += 1
+                        summary.errors.append("%s: %s" % (hit.url, exc))
         return summary
 
     def scrape(
@@ -168,16 +189,17 @@ class TechtemberPipeline:
                 max_depth=max_depth,
             )
             summary.discovered = len(pages)
-            for page in pages:
-                try:
-                    summary.fetched += 1
-                    if self.ingest_page(page, source=source, min_score=min_score):
-                        summary.stored += 1
-                    else:
-                        summary.skipped += 1
-                except Exception as exc:
-                    summary.failed += 1
-                    summary.errors.append("%s: %s" % (page.url, exc))
+            with self.storage.bulk():
+                for page in pages:
+                    try:
+                        summary.fetched += 1
+                        if self.ingest_page(page, source=source, min_score=min_score):
+                            summary.stored += 1
+                        else:
+                            summary.skipped += 1
+                    except Exception as exc:
+                        summary.failed += 1
+                        summary.errors.append("%s: %s" % (page.url, exc))
         except Exception as exc:
             summary.failed = 1
             summary.errors.append("%s: %s" % (url, exc))

@@ -9,7 +9,6 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .models import FetchedPage, PageRecord, SearchHit
 
-
 TRACKING_PARAMETERS = {
     "fbclid",
     "gclid",
@@ -136,6 +135,7 @@ def _record_from_parts(
     source: str,
     query: str,
     terms: Iterable[str],
+    include_raw: bool = True,
 ) -> PageRecord:
     metadata = dict(metadata)
     title = extract_title(markdown, metadata)
@@ -153,9 +153,13 @@ def _record_from_parts(
             "date",
         ),
     )
+    # Both lists come from the same configured terms: "technologies" are terms
+    # matched anywhere in the content, "topics" only those in the headline fields.
     matched_terms = extract_terms(" ".join((title, description, markdown)), terms)
     topics = extract_terms(" ".join((title, description)), terms)
-    safe_raw = _json_safe(raw)
+    raw_json = "{}"
+    if include_raw:
+        raw_json = json.dumps(_json_safe(raw), ensure_ascii=False, default=str)
     return PageRecord(
         url=url,
         canonical_url=canonicalize_url(url),
@@ -171,12 +175,16 @@ def _record_from_parts(
         relevance_score=relevance_score(title, description, markdown, terms),
         content_hash=hashlib.sha256(markdown.encode("utf-8")).hexdigest(),
         fetched_at=datetime.now(timezone.utc).isoformat(),
-        raw_json=json.dumps(safe_raw, ensure_ascii=False, default=str),
+        raw_json=raw_json,
     )
 
 
 def normalize_fetched_page(
-    page: FetchedPage, source: str, query: str, terms: Iterable[str]
+    page: FetchedPage,
+    source: str,
+    query: str,
+    terms: Iterable[str],
+    include_raw: bool = True,
 ) -> PageRecord:
     return _record_from_parts(
         page.url,
@@ -186,10 +194,24 @@ def normalize_fetched_page(
         source,
         query,
         terms,
+        include_raw=include_raw,
     )
 
 
 def normalize_search_hit(
-    hit: SearchHit, source: str, query: str, terms: Iterable[str]
+    hit: SearchHit,
+    source: str,
+    query: str,
+    terms: Iterable[str],
+    include_raw: bool = True,
 ) -> PageRecord:
-    return _record_from_parts(hit.url, hit.markdown, hit.metadata, hit.raw, source, query, terms)
+    return _record_from_parts(
+        hit.url,
+        hit.markdown,
+        hit.metadata,
+        hit.raw,
+        source,
+        query,
+        terms,
+        include_raw=include_raw,
+    )

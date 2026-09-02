@@ -9,6 +9,7 @@ __pycache__/
 .mypy_cache/
 .firecrawl/
 data/*.db
+!data/techtember.db
 data/*.db-*
 data/*.sqlite
 data/*.sqlite-*

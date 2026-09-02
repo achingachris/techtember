@@ -18,7 +18,6 @@ from xml.etree import ElementTree
 
 from .models import FetchedPage, SearchHit
 
-
 HttpResponse = Tuple[bytes, str, str]
 HttpFetcher = Callable[[str], HttpResponse]
 

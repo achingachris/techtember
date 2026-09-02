@@ -1,9 +1,10 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from techtember.config import load_settings
+from techtember.config import load_dotenv, load_settings
 
 
 class ConfigTests(unittest.TestCase):
@@ -39,6 +40,39 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.crawl_sites[0].rss_feeds, ["https://example.com/feed.xml"])
         self.assertEqual(settings.crawl_sites[0].max_depth, 1)
         self.assertFalse(settings.crawl_sites[1].enabled)
+
+    def test_twitter_platform_is_canonicalized_to_x(self):
+        config = {
+            "search_terms": [
+                {"name": "Legacy", "platform": "twitter", "query": "AI launch"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "seeds.json"
+            path.write_text(json.dumps(config), encoding="utf-8")
+            settings = load_settings(path)
+
+        self.assertEqual(settings.search_seeds[0].platform, "x")
+        self.assertEqual(settings.search_seeds[0].include_domains, ["x.com", "twitter.com"])
+
+    def test_dotenv_strips_only_one_matched_quote_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                'TEST_DOTENV_A="\\"quoted\\""\nTEST_DOTENV_B=\'plain\'\n'
+                "TEST_DOTENV_C=\"mismatched'\n",
+                encoding="utf-8",
+            )
+            for key in ("TEST_DOTENV_A", "TEST_DOTENV_B", "TEST_DOTENV_C"):
+                os.environ.pop(key, None)
+            try:
+                load_dotenv(path)
+                self.assertEqual(os.environ["TEST_DOTENV_A"], '\\"quoted\\"')
+                self.assertEqual(os.environ["TEST_DOTENV_B"], "plain")
+                self.assertEqual(os.environ["TEST_DOTENV_C"], "\"mismatched'")
+            finally:
+                for key in ("TEST_DOTENV_A", "TEST_DOTENV_B", "TEST_DOTENV_C"):
+                    os.environ.pop(key, None)
 
 
 if __name__ == "__main__":

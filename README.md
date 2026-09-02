@@ -167,7 +167,17 @@ TECHTEMBER_FORCE_FALLBACK=true uv run techtember run-all --limit 3
 
 If Firecrawl returns a credit, quota, or rate-limit error, Techtember disables Firecrawl for the rest of that run and continues with the fallbacks. A `Fallback providers used` line is printed on stderr when this happens. `smoke-test` remains Firecrawl-only by design.
 
-Collection commands also write a small audit manifest under `data/runs/` containing the command arguments and counts. `run-all` additionally writes a citation-ready article brief under `data/runs/`. Raw page responses are retained in the database's `raw_json` column; the database itself is ignored by Git.
+Collection commands also write a small audit manifest under `data/runs/` containing the command arguments and counts. `run-all` additionally writes a citation-ready article brief under `data/runs/`. Raw page responses are retained in the database's `raw_json` column. `data/techtember.db` is committed by the scheduled workflow so runs accumulate; WAL sidecar files and manifests stay ignored.
+
+## Scheduled runs (September)
+
+`.github/workflows/techtember.yml` runs five times a day in Kenyan time (06:00, 10:00, 14:00, 18:00, 22:00 EAT) until 30 September:
+
+1. Crawl all configured searches and sites (`techtember run-all`) and commit the updated database.
+2. Generate one article per run from that day's pages (`scripts/generate_article.py run`), written as a page bundle to `articles/<date>/run-<n>/index.md` using the GitHub Models API. Articles follow the [article-writer skill](https://github.com/achingachris/my-skills/tree/main/plugins/my-skills/skills/article-writer): Chris's technical-tutorial voice, no front matter, no H1, attribution footer, and a mechanical QA pass (`scripts/article_writer/qa_check.py`) with one automatic repair round. Strapi field values (title, description, tags) are written to `meta.json` beside each `index.md`.
+3. The 22:00 EAT run additionally writes `articles/<date>/daily-digest/index.md`, a final article referencing the day's earlier run articles.
+
+Requirements: add the `FIRECRAWL_API_KEY` repository secret. Articles use the built-in `GITHUB_TOKEN` (`models: read`). Commits are authored as `achinga.chris@gmail.com`.
 
 ## Article agent handoff
 
