@@ -8,6 +8,9 @@ from techtember.storage import Storage
 
 
 class FakeClient:
+    def __init__(self):
+        self.crawl_options = None
+
     def search(self, query, limit=10, include_domains=None):
         return [
             SearchHit(
@@ -24,6 +27,23 @@ class FakeClient:
             metadata={"title": "Python engineering"},
             raw={"source": "fake"},
         )
+
+    def crawl(
+        self,
+        url,
+        limit=25,
+        include_paths=(),
+        exclude_paths=(),
+        max_depth=None,
+    ):
+        self.crawl_options = {
+            "url": url,
+            "limit": limit,
+            "include_paths": list(include_paths),
+            "exclude_paths": list(exclude_paths),
+            "max_depth": max_depth,
+        }
+        return [self.scrape(url + "/article")]
 
 
 class PipelineTests(unittest.TestCase):
@@ -54,7 +74,28 @@ class PipelineTests(unittest.TestCase):
                 self.assertEqual(summary.stored, 0)
                 self.assertEqual(summary.skipped, 1)
 
+    def test_crawl_forwards_scope_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with Storage(Path(directory) / "test.db") as storage:
+                client = FakeClient()
+                pipeline = TechtemberPipeline(
+                    client=client,
+                    storage=storage,
+                    terms=["python"],
+                )
+                summary = pipeline.crawl(
+                    "https://example.com",
+                    limit=3,
+                    include_paths=["/blog/*"],
+                    exclude_paths=["/login*"],
+                    max_depth=1,
+                )
+                self.assertEqual(summary.stored, 1)
+                self.assertEqual(client.crawl_options["limit"], 3)
+                self.assertEqual(client.crawl_options["include_paths"], ["/blog/*"])
+                self.assertEqual(client.crawl_options["exclude_paths"], ["/login*"])
+                self.assertEqual(client.crawl_options["max_depth"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
-

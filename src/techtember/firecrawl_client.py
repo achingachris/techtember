@@ -59,6 +59,16 @@ def _metadata(value: Any) -> Dict[str, Any]:
     return _mapping(_value(value, "metadata", default={}))
 
 
+def _add_domain_filters(query: str, include_domains: Iterable[str]) -> str:
+    """Use portable search operators instead of SDK-version-specific parameters."""
+
+    domains = [str(domain).strip() for domain in include_domains if str(domain).strip()]
+    if not domains:
+        return query
+    site_filters = " OR ".join("site:%s" % domain for domain in domains)
+    return "(%s) (%s)" % (query, site_filters)
+
+
 def _as_page(value: Any, fallback_url: str = "") -> FetchedPage:
     primitive = _primitive(value)
     url = str(
@@ -151,13 +161,12 @@ class FirecrawlClient:
         include_domains: Optional[Iterable[str]] = None,
     ) -> List[SearchHit]:
         kwargs: Dict[str, Any] = {"limit": limit}
-        if include_domains:
-            kwargs["include_domains"] = list(include_domains)
+        search_query = _add_domain_filters(query, include_domains or [])
         try:
-            result = self._call(self._client.search, query, **kwargs)
+            result = self._call(self._client.search, search_query, **kwargs)
         except TypeError:
-            # Older SDKs do not expose include_domains under the same name.
-            result = self._client.search(query, limit=limit)
+            # Some older SDKs expose fewer optional parameters than the current client.
+            result = self._call(self._client.search, search_query, limit=limit)
         hits: List[SearchHit] = []
         for item in _results(result, "web"):
             item = _mapping(item)
@@ -222,9 +231,25 @@ class FirecrawlClient:
                 output.append(str(link).strip())
         return output
 
-    def crawl(self, url: str, limit: int = 25) -> List[FetchedPage]:
+    def crawl(
+        self,
+        url: str,
+        limit: int = 25,
+        include_paths: Iterable[str] = (),
+        exclude_paths: Iterable[str] = (),
+        max_depth: Optional[int] = None,
+    ) -> List[FetchedPage]:
+        include_paths = list(include_paths)
+        exclude_paths = list(exclude_paths)
+        kwargs: Dict[str, Any] = {"limit": limit}
+        if include_paths:
+            kwargs["include_paths"] = include_paths
+        if exclude_paths:
+            kwargs["exclude_paths"] = exclude_paths
+        if max_depth is not None:
+            kwargs["max_depth"] = max_depth
         try:
-            result = self._call(self._client.crawl, url, limit=limit)
+            result = self._call(self._client.crawl, url, **kwargs)
         except AttributeError:
             legacy = getattr(self._client, "crawl_url", None)
             if not callable(legacy):
@@ -235,11 +260,11 @@ class FirecrawlClient:
                 result = self._call(
                     legacy,
                     url,
-                    limit=limit,
+                    **kwargs,
                     scrape_options=ScrapeOptions(formats=["markdown"]),
                 )
             except (ImportError, TypeError):
-                result = self._call(legacy, url, limit=limit)
+                result = self._call(legacy, url, **kwargs)
         pages = _results(result, "data")
         if not pages:
             pages = _results(result, "documents")

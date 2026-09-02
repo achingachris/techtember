@@ -4,7 +4,11 @@ from techtember.firecrawl_client import FirecrawlClient
 
 
 class LegacyClient:
+    def __init__(self):
+        self.search_query = ""
+
     def search(self, query, limit=None, **kwargs):
+        self.search_query = query
         return {"web": [{"url": "https://example.com", "title": "Example"}]}
 
     def scrape_url(self, url, formats=None):
@@ -13,7 +17,8 @@ class LegacyClient:
     def map_url(self, url, search=None):
         return {"links": ["https://example.com/about"]}
 
-    def crawl_url(self, url, limit=None, scrape_options=None):
+    def crawl_url(self, url, limit=None, scrape_options=None, **kwargs):
+        self.crawl_kwargs = kwargs
         return {"data": [{"markdown": "# Example", "metadata": {"sourceURL": url}}]}
 
 
@@ -30,11 +35,34 @@ class FlakyClient:
 
 class AdapterTests(unittest.TestCase):
     def test_supports_legacy_named_sdk_methods(self):
-        client = FirecrawlClient(client=LegacyClient())
+        fake = LegacyClient()
+        client = FirecrawlClient(client=fake)
         self.assertEqual(client.search("example")[0].url, "https://example.com")
         self.assertEqual(client.scrape("https://example.com").markdown, "# Example")
         self.assertEqual(client.map("https://example.com"), ["https://example.com/about"])
-        self.assertEqual(len(client.crawl("https://example.com")), 1)
+        self.assertEqual(
+            len(
+                client.crawl(
+                    "https://example.com",
+                    include_paths=["/blog/*"],
+                    exclude_paths=["/login*"],
+                    max_depth=1,
+                )
+            ),
+            1,
+        )
+        self.assertEqual(fake.crawl_kwargs["include_paths"], ["/blog/*"])
+        self.assertEqual(fake.crawl_kwargs["exclude_paths"], ["/login*"])
+        self.assertEqual(fake.crawl_kwargs["max_depth"], 1)
+
+    def test_domain_filters_are_encoded_in_the_query(self):
+        fake = LegacyClient()
+        client = FirecrawlClient(client=fake)
+        client.search("AI launch", include_domains=["x.com", "twitter.com"])
+        self.assertEqual(
+            fake.search_query,
+            "(AI launch) (site:x.com OR site:twitter.com)",
+        )
 
     def test_retries_transient_sdk_errors(self):
         fake = FlakyClient()

@@ -3,8 +3,9 @@
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 
 DEFAULT_TERMS = [
@@ -21,6 +22,21 @@ DEFAULT_TERMS = [
     "startup",
     "open source",
 ]
+
+
+def render_search_query(query: str, start_date: Optional[str] = None) -> str:
+    """Expand date placeholders used by platform search seeds."""
+
+    today = date.today()
+    values = {
+        "today": today.isoformat(),
+        "year": str(today.year),
+        "start_date": start_date or os.getenv("TECHTEMBER_START_DATE") or today.isoformat(),
+    }
+    rendered = query
+    for key, value in values.items():
+        rendered = rendered.replace("{%s}" % key, value)
+    return rendered
 
 
 def load_dotenv(path: Path) -> None:
@@ -50,6 +66,32 @@ def load_json_config(path: Path) -> Dict[str, Any]:
 
 
 @dataclass
+class SearchSeed:
+    """A named query intended for a specific discovery platform."""
+
+    name: str
+    platform: str
+    query: str
+    include_domains: List[str] = field(default_factory=list)
+
+
+@dataclass
+class CrawlSite:
+    """A named website or section that can be crawled from the CLI."""
+
+    name: str
+    url: str
+    enabled: bool = True
+    mode: str = "crawl"
+    limit: Optional[int] = None
+    min_relevance_score: Optional[float] = None
+    include_paths: List[str] = field(default_factory=list)
+    exclude_paths: List[str] = field(default_factory=list)
+    max_depth: Optional[int] = None
+    notes: str = ""
+
+
+@dataclass
 class Settings:
     """Runtime settings resolved from environment and the seed config."""
 
@@ -57,6 +99,8 @@ class Settings:
     database_path: Path
     data_dir: Path
     queries: List[str] = field(default_factory=list)
+    search_seeds: List[SearchSeed] = field(default_factory=list)
+    crawl_sites: List[CrawlSite] = field(default_factory=list)
     terms: List[str] = field(default_factory=lambda: list(DEFAULT_TERMS))
     include_domains: List[str] = field(default_factory=list)
     exclude_domains: List[str] = field(default_factory=list)
@@ -85,11 +129,99 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
             raise ValueError("Config value '%s' must be a list" % key)
         return [str(item).strip() for item in value if str(item).strip()]
 
+    def domain_list(value: Any, key: str) -> List[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("Config value '%s' must be a list" % key)
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    search_seeds: List[SearchSeed] = []
+    configured_searches = config.get("search_terms", [])
+    if not isinstance(configured_searches, list):
+        raise ValueError("Config value 'search_terms' must be a list")
+    platform_domains = {
+        "x": ["x.com", "twitter.com"],
+        "twitter": ["x.com", "twitter.com"],
+    }
+    for index, entry in enumerate(configured_searches):
+        if not isinstance(entry, Mapping):
+            raise ValueError("search_terms[%d] must be an object" % index)
+        query = str(entry.get("query", "")).strip()
+        if not query:
+            raise ValueError("search_terms[%d] is missing query" % index)
+        platform = str(entry.get("platform", "web")).strip().lower() or "web"
+        include_domains = domain_list(entry.get("include_domains"), "search_terms.include_domains")
+        if not include_domains:
+            include_domains = list(platform_domains.get(platform, []))
+        search_seeds.append(
+            SearchSeed(
+                name=str(entry.get("name", query)).strip() or query,
+                platform=platform,
+                query=query,
+                include_domains=include_domains,
+            )
+        )
+
+    queries = list_value("queries", [])
+    if not search_seeds:
+        search_seeds = [
+            SearchSeed(
+                name=query,
+                platform="web",
+                query=query,
+                include_domains=[],
+            )
+            for query in queries
+        ]
+
+    crawl_sites: List[CrawlSite] = []
+    configured_sites = config.get("crawl_sites", [])
+    if not isinstance(configured_sites, list):
+        raise ValueError("Config value 'crawl_sites' must be a list")
+    for index, entry in enumerate(configured_sites):
+        if isinstance(entry, str):
+            entry = {"url": entry}
+        if not isinstance(entry, Mapping):
+            raise ValueError("crawl_sites[%d] must be an object or URL string" % index)
+        url = str(entry.get("url", "")).strip()
+        if not url:
+            raise ValueError("crawl_sites[%d] is missing url" % index)
+        mode = str(entry.get("mode", "crawl")).strip().lower() or "crawl"
+        if mode not in {"crawl", "scrape"}:
+            raise ValueError("crawl_sites[%d].mode must be 'crawl' or 'scrape'" % index)
+        crawl_sites.append(
+            CrawlSite(
+                name=str(entry.get("name", url)).strip() or url,
+                url=url,
+                enabled=bool(entry.get("enabled", True)),
+                mode=mode,
+                limit=(int(entry["limit"]) if entry.get("limit") is not None else None),
+                min_relevance_score=(
+                    float(entry["min_relevance_score"])
+                    if entry.get("min_relevance_score") is not None
+                    else None
+                ),
+                include_paths=domain_list(
+                    entry.get("include_paths"), "crawl_sites.include_paths"
+                ),
+                exclude_paths=domain_list(
+                    entry.get("exclude_paths"), "crawl_sites.exclude_paths"
+                ),
+                max_depth=(
+                    int(entry["max_depth"]) if entry.get("max_depth") is not None else None
+                ),
+                notes=str(entry.get("notes", "")).strip(),
+            )
+        )
+
     return Settings(
         api_key=os.getenv("FIRECRAWL_API_KEY") or None,
         database_path=database_path,
         data_dir=data_dir,
-        queries=list_value("queries", []),
+        queries=queries,
+        search_seeds=search_seeds,
+        crawl_sites=crawl_sites,
         terms=list_value("terms", DEFAULT_TERMS),
         include_domains=list_value("include_domains", []),
         exclude_domains=list_value("exclude_domains", []),

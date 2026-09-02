@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional
 
-from .config import Settings, load_settings
+from .config import SearchSeed, Settings, load_settings, render_search_query
 from .firecrawl_client import FirecrawlClient, FirecrawlConfigurationError
-from .pipeline import TechtemberPipeline
+from .pipeline import RunSummary, TechtemberPipeline
 from .storage import Storage
 
 
@@ -43,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     discover.add_argument("queries", nargs="*", help="Search queries; defaults to config queries")
     discover.add_argument("--limit", type=int, default=None, help="Results per query")
     discover.add_argument("--min-score", type=float, default=None, help="Minimum relevance score")
+    discover.add_argument(
+        "--platform",
+        choices=("all", "x", "twitter", "google", "web"),
+        default="all",
+        help="Configured platform filter; X terms are restricted to x.com/twitter.com",
+    )
 
     scrape = commands.add_parser("scrape", help="Scrape and store one URL")
     scrape.add_argument("url")
@@ -53,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     crawl.add_argument("url")
     crawl.add_argument("--limit", type=int, default=None, help="Maximum pages")
     crawl.add_argument("--min-score", type=float, default=None, help="Minimum relevance score")
+    crawl.add_argument(
+        "--include-path", action="append", default=[], help="Path pattern to include; repeatable"
+    )
+    crawl.add_argument(
+        "--exclude-path", action="append", default=[], help="Path pattern to exclude; repeatable"
+    )
+    crawl.add_argument("--max-depth", type=int, default=None, help="Maximum link depth")
 
     map_command = commands.add_parser("map", help="List URLs discovered on a site")
     map_command.add_argument("url")
@@ -69,6 +82,38 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--output", type=Path, default=None, help="Output path; defaults to stdout")
 
     commands.add_parser("stats", help="Show local corpus statistics")
+
+    queries = commands.add_parser(
+        "queries", help="Print configured search terms for X, Google, or the open web"
+    )
+    queries.add_argument(
+        "--platform",
+        choices=("all", "x", "twitter", "google", "web"),
+        default="all",
+    )
+    queries.add_argument("--format", choices=("text", "json"), default="text")
+
+    crawl_sites = commands.add_parser(
+        "crawl-sites", help="Crawl every enabled site in config/seeds.json"
+    )
+    crawl_sites.add_argument("--limit", type=int, default=None, help="Maximum pages per site")
+    crawl_sites.add_argument(
+        "--min-score", type=float, default=None, help="Minimum relevance score"
+    )
+
+    run_all = commands.add_parser(
+        "run-all",
+        help="Run all configured searches and enabled site crawls",
+    )
+    run_all.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Override results per search and maximum pages per site",
+    )
+    run_all.add_argument(
+        "--min-score", type=float, default=None, help="Minimum relevance score"
+    )
 
     smoke = commands.add_parser("smoke-test", help="Make one real Firecrawl scrape request")
     smoke.add_argument("--url", default="https://firecrawl.dev")
@@ -127,6 +172,77 @@ def _write_run_manifest(
     return manifest_path
 
 
+def _selected_search_seeds(
+    settings: Settings, queries: List[str], platform: str
+) -> List[SearchSeed]:
+    if queries:
+        include_domains = ["x.com", "twitter.com"] if platform in {"x", "twitter"} else []
+        return [
+            SearchSeed(
+                name=query,
+                platform=("web" if platform == "all" else platform),
+                query=render_search_query(query),
+                include_domains=include_domains,
+            )
+            for query in queries
+        ]
+    if platform == "all":
+        return list(settings.search_seeds)
+    return [
+        seed
+        for seed in settings.search_seeds
+        if seed.platform == platform or (platform == "x" and seed.platform == "twitter")
+    ]
+
+
+def _configured_site_min_score(
+    settings: Settings, site: Any, override: Optional[float]
+) -> float:
+    if override is not None:
+        return override
+    if site.min_relevance_score is not None:
+        return site.min_relevance_score
+    return settings.min_relevance_score
+
+
+def _crawl_configured_sites(
+    settings: Settings,
+    pipeline: TechtemberPipeline,
+    limit: Optional[int] = None,
+    min_score: Optional[float] = None,
+    require_sites: bool = True,
+) -> RunSummary:
+    sites = [site for site in settings.crawl_sites if site.enabled]
+    if not sites:
+        if require_sites:
+            raise ValueError(
+                "No enabled crawl_sites configured. Add named sites to config/seeds.json."
+            )
+        return RunSummary()
+
+    summary = RunSummary()
+    for index, site in enumerate(sites, start=1):
+        print("[%d/%d] Crawling %s (%s)" % (index, len(sites), site.name, site.mode))
+        site_min_score = _configured_site_min_score(settings, site, min_score)
+        if site.mode == "scrape":
+            site_summary = pipeline.scrape(
+                site.url,
+                source="configured",
+                min_score=site_min_score,
+            )
+        else:
+            site_summary = pipeline.crawl(
+                site.url,
+                limit=limit or site.limit or settings.max_crawl_pages,
+                min_score=site_min_score,
+                include_paths=site.include_paths,
+                exclude_paths=site.exclude_paths,
+                max_depth=site.max_depth,
+            )
+        summary.absorb(site_summary)
+    return summary
+
+
 def _run(args: argparse.Namespace) -> int:
     if args.command == "search":
         settings = _settings(args)
@@ -168,6 +284,31 @@ def _run(args: argparse.Namespace) -> int:
             )
         return 0
 
+    if args.command == "queries":
+        settings = _settings(args)
+        seeds = _selected_search_seeds(settings, [], args.platform)
+        if args.format == "json":
+            print(
+                json.dumps(
+                    [
+                        {
+                            "name": seed.name,
+                            "platform": seed.platform,
+                            "query": render_search_query(seed.query),
+                            "include_domains": seed.include_domains,
+                        }
+                        for seed in seeds
+                    ],
+                    indent=2,
+                )
+            )
+        else:
+            for seed in seeds:
+                print("[%s] %s" % (seed.platform, seed.name))
+                print(render_search_query(seed.query))
+                print()
+        return 0
+
     if args.command == "map":
         settings = _settings(args)
         client = FirecrawlClient(
@@ -202,9 +343,9 @@ def _run(args: argparse.Namespace) -> int:
     settings, storage, pipeline = _pipeline(args)
     try:
         if args.command == "discover":
-            queries = args.queries or settings.queries
+            queries = _selected_search_seeds(settings, args.queries, args.platform)
             if not queries:
-                raise ValueError("No queries supplied and config contains no queries")
+                raise ValueError("No search terms match the selected platform")
             summary = pipeline.discover(
                 queries,
                 limit=args.limit or settings.max_search_results,
@@ -214,6 +355,49 @@ def _run(args: argparse.Namespace) -> int:
                     else args.min_score
                 ),
             )
+        elif args.command == "crawl-sites":
+            summary = _crawl_configured_sites(
+                settings,
+                pipeline,
+                limit=args.limit,
+                min_score=args.min_score,
+            )
+        elif args.command == "run-all":
+            search_seeds = _selected_search_seeds(settings, [], "all")
+            enabled_sites = [site for site in settings.crawl_sites if site.enabled]
+            if not search_seeds and not enabled_sites:
+                raise ValueError(
+                    "No configured search_terms or enabled crawl_sites to run."
+                )
+
+            summary = RunSummary()
+            if search_seeds:
+                print("Discovering %d configured search terms" % len(search_seeds))
+                search_summary = pipeline.discover(
+                    search_seeds,
+                    limit=args.limit or settings.max_search_results,
+                    min_score=(
+                        settings.min_relevance_score
+                        if args.min_score is None
+                        else args.min_score
+                    ),
+                )
+                summary.absorb(search_summary)
+            else:
+                print("No configured search terms; skipping discovery")
+
+            if enabled_sites:
+                summary.absorb(
+                    _crawl_configured_sites(
+                        settings,
+                        pipeline,
+                        limit=args.limit,
+                        min_score=args.min_score,
+                        require_sites=False,
+                    )
+                )
+            else:
+                print("No enabled crawl sites; skipping site crawls")
         elif args.command == "scrape":
             summary = pipeline.scrape(
                 args.url,
@@ -233,11 +417,15 @@ def _run(args: argparse.Namespace) -> int:
                     if args.min_score is None
                     else args.min_score
                 ),
+                include_paths=args.include_path,
+                exclude_paths=args.exclude_path,
+                max_depth=args.max_depth,
             )
         else:
             raise ValueError("Unsupported command: %s" % args.command)
         _print_summary(summary)
-        _write_run_manifest(settings, args.command, args, summary)
+        manifest_path = _write_run_manifest(settings, args.command, args, summary)
+        print("Run manifest: %s" % manifest_path)
         return 1 if summary.failed else 0
     finally:
         storage.close()

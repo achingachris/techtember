@@ -4,6 +4,185 @@
     "software engineering trends",
     "developer tools and AI"
   ],
+  "search_terms": [
+    {
+      "name": "Techtember core search",
+      "platform": "google",
+      "query": "\"Techtember\" OR \"Techtember {year}\""
+    },
+    {
+      "name": "September launch season",
+      "platform": "google",
+      "query": "(\"September launch\" OR \"fall launch\") (technology OR gadgets) after:{start_date}"
+    },
+    {
+      "name": "Apple and flagship launches",
+      "platform": "google",
+      "query": "(Apple OR iPhone OR iPad OR Mac OR Android OR foldable) (event OR launch OR release) after:{start_date}"
+    },
+    {
+      "name": "IFA announcements",
+      "platform": "google",
+      "query": "(IFA OR \"IFA {year}\") (smartphone OR laptop OR TV OR AI)"
+    },
+    {
+      "name": "AI agents and computer use",
+      "platform": "google",
+      "query": "(\"AI agent\" OR agentic OR \"computer use\") (launch OR benchmark OR security) after:{start_date}"
+    },
+    {
+      "name": "Models and benchmarks",
+      "platform": "google",
+      "query": "(LLM OR \"foundation model\" OR multimodal OR reasoning) (release OR benchmark) after:{start_date}"
+    },
+    {
+      "name": "AI chips and data centers",
+      "platform": "google",
+      "query": "(\"AI chip\" OR GPU OR TPU OR NPU OR chiplet OR \"custom silicon\" OR \"data center\") (launch OR investment OR pricing) after:{start_date}"
+    },
+    {
+      "name": "Security incidents",
+      "platform": "google",
+      "query": "(zero-day OR CVE OR ransomware OR \"supply-chain attack\") after:{start_date}"
+    },
+    {
+      "name": "Africa and East Africa technology",
+      "platform": "google",
+      "query": "(Kenya OR Africa OR Nairobi) (AI OR fintech OR telecom OR \"data center\" OR startup) after:{start_date}"
+    },
+    {
+      "name": "Technology conversations on X",
+      "platform": "x",
+      "query": "(AI OR \"developer tools\" OR cloud) (launch OR release OR funding OR \"open source\") since:{start_date} lang:en"
+    },
+    {
+      "name": "Techmeme on X",
+      "platform": "x",
+      "query": "from:Techmeme since:{start_date} lang:en"
+    },
+    {
+      "name": "TechCrunch on X",
+      "platform": "x",
+      "query": "from:TechCrunch since:{start_date} lang:en"
+    },
+    {
+      "name": "Reuters technology on X",
+      "platform": "x",
+      "query": "from:ReutersTech since:{start_date} lang:en"
+    },
+    {
+      "name": "AI labs on X",
+      "platform": "x",
+      "query": "(from:OpenAI OR from:AnthropicAI OR from:GoogleDeepMind) since:{start_date} lang:en"
+    },
+    {
+      "name": "Open web technology",
+      "platform": "web",
+      "query": "technology startup software engineering trends after:{start_date}"
+    }
+  ],
+  "crawl_sites": [
+    {
+      "name": "Techmeme front page",
+      "url": "https://techmeme.com",
+      "enabled": true,
+      "mode": "scrape",
+      "limit": 1,
+      "notes": "Use the current front page only; the map contains dated archive and fragment URLs."
+    },
+    {
+      "name": "TechCrunch",
+      "url": "https://techcrunch.com/",
+      "enabled": false,
+      "mode": "crawl",
+      "limit": 10,
+      "include_paths": ["/category/artificial-intelligence/*", "/category/startups/*", "/category/security/*"],
+      "exclude_paths": ["/cdn-cgi/*", "/video/*", "/podcasts/*", "/events/*", "/sitemap*"] ,
+      "max_depth": 1,
+      "notes": "Disabled: representative scrape returned a Cloudflare verification page; use search/RSS until access is stable."
+    },
+    {
+      "name": "The Verge tech",
+      "url": "https://www.theverge.com/tech",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/tech/*"],
+      "exclude_paths": ["/auth/*", "/subscribe*", "/video/*", "/podcasts/*"],
+      "max_depth": 1
+    },
+    {
+      "name": "Ars Technica technology and AI",
+      "url": "https://arstechnica.com/",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/ai/*", "/gadgets/*", "/tech-policy/*", "/security/*"],
+      "exclude_paths": ["/civis/*", "/sitemap*", "/post_tag-sitemap*"],
+      "max_depth": 2
+    },
+    {
+      "name": "Hacker News item pages",
+      "url": "https://news.ycombinator.com/news",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/item*"] ,
+      "exclude_paths": ["/login*", "/user*", "/from*", "/submit*", "/newest*", "/ask*", "/show*", "/jobs*"],
+      "max_depth": 1,
+      "notes": "Crawl HN item pages for discussions; follow linked stories separately only when needed."
+    },
+    {
+      "name": "KrebsOnSecurity",
+      "url": "https://krebsonsecurity.com/",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/20*/*"],
+      "exclude_paths": ["/feed*", "/comments/*", "/wp-*"],
+      "max_depth": 1
+    },
+    {
+      "name": "TechCabal",
+      "url": "https://techcabal.com/",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/20*/*"],
+      "exclude_paths": ["/sitemap*", "/category/*", "/tag/*", "/author/*"],
+      "max_depth": 1
+    },
+    {
+      "name": "Techweez",
+      "url": "https://techweez.com/",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/20*/*"],
+      "exclude_paths": ["/category/*", "/tag/*", "/author/*", "/wp-*"],
+      "max_depth": 1
+    },
+    {
+      "name": "TLDR tech",
+      "url": "https://tldr.tech/tech",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 15,
+      "include_paths": ["/tech/*", "/ai/*", "/dev/*", "/infosec/*"],
+      "exclude_paths": ["/subscribe*", "/login*"],
+      "max_depth": 1
+    },
+    {
+      "name": "The Batch",
+      "url": "https://www.deeplearning.ai/the-batch/",
+      "enabled": true,
+      "mode": "crawl",
+      "limit": 10,
+      "include_paths": ["/the-batch/*"],
+      "exclude_paths": ["/the-batch/tag/*", "/the-batch/search*"],
+      "max_depth": 1
+    }
+  ],
   "terms": [
     "technology",
     "software",
@@ -16,7 +195,45 @@
     "cybersecurity",
     "data",
     "startup",
-    "open source"
+    "open source",
+    "apple",
+    "iphone",
+    "ipad",
+    "mac",
+    "android",
+    "foldable",
+    "ifa",
+    "ai agent",
+    "agentic",
+    "computer use",
+    "llm",
+    "foundation model",
+    "multimodal",
+    "reasoning",
+    "gpu",
+    "tpu",
+    "npu",
+    "chiplet",
+    "data center",
+    "hbm",
+    "networking",
+    "post-quantum",
+    "pqc",
+    "zero-day",
+    "cve",
+    "ransomware",
+    "supply-chain attack",
+    "funding",
+    "acquisition",
+    "ipo",
+    "layoffs",
+    "antitrust",
+    "kenya",
+    "africa",
+    "nairobi",
+    "fintech",
+    "telecom",
+    "mobile money"
   ],
   "include_domains": [],
   "exclude_domains": [
@@ -29,4 +246,3 @@
   "max_crawl_pages": 100,
   "min_relevance_score": 0.0
 }
-

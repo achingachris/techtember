@@ -1,9 +1,10 @@
 """Collection orchestration for Techtember."""
 
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Set
+from typing import Iterable, List, Optional, Set, Union
 from urllib.parse import urlsplit
 
+from .config import SearchSeed, render_search_query
 from .firecrawl_client import FirecrawlClient
 from .models import FetchedPage, PageRecord
 from .normalize import canonicalize_url, normalize_fetched_page, normalize_search_hit
@@ -27,6 +28,14 @@ class RunSummary:
     skipped: int = 0
     failed: int = 0
     errors: List[str] = field(default_factory=list)
+
+    def absorb(self, other: "RunSummary") -> None:
+        self.discovered += other.discovered
+        self.fetched += other.fetched
+        self.stored += other.stored
+        self.skipped += other.skipped
+        self.failed += other.failed
+        self.errors.extend(other.errors)
 
 
 class TechtemberPipeline:
@@ -64,17 +73,23 @@ class TechtemberPipeline:
 
     def discover(
         self,
-        queries: Iterable[str],
+        queries: Iterable[Union[str, SearchSeed]],
         limit: int = 10,
         min_score: float = 0.0,
     ) -> RunSummary:
         summary = RunSummary()
         seen: Set[str] = set()
-        for query in queries:
+        for entry in queries:
+            include_domains = self.include_domains
+            if isinstance(entry, SearchSeed):
+                query = render_search_query(entry.query)
+                include_domains = entry.include_domains or self.include_domains
+            else:
+                query = render_search_query(str(entry))
             query = query.strip()
             if not query:
                 continue
-            hits = self.client.search(query, limit=limit, include_domains=self.include_domains)
+            hits = self.client.search(query, limit=limit, include_domains=include_domains)
             summary.discovered += len(hits)
             for hit in hits:
                 key = canonicalize_url(hit.url)
@@ -122,10 +137,24 @@ class TechtemberPipeline:
             summary.errors.append("%s: %s" % (url, exc))
         return summary
 
-    def crawl(self, url: str, limit: int = 25, min_score: float = 0.0) -> RunSummary:
+    def crawl(
+        self,
+        url: str,
+        limit: int = 25,
+        min_score: float = 0.0,
+        include_paths: Iterable[str] = (),
+        exclude_paths: Iterable[str] = (),
+        max_depth: Optional[int] = None,
+    ) -> RunSummary:
         summary = RunSummary()
         try:
-            pages = self.client.crawl(url, limit=limit)
+            pages = self.client.crawl(
+                url,
+                limit=limit,
+                include_paths=include_paths,
+                exclude_paths=exclude_paths,
+                max_depth=max_depth,
+            )
             summary.discovered = len(pages)
             for page in pages:
                 try:
@@ -141,4 +170,3 @@ class TechtemberPipeline:
             summary.failed = 1
             summary.errors.append("%s: %s" % (url, exc))
         return summary
-
