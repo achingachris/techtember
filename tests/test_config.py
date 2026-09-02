@@ -19,6 +19,7 @@ class ConfigTests(unittest.TestCase):
                     "url": "https://example.com/blog",
                     "limit": 5,
                     "include_paths": ["/blog/*"],
+                    "rss_feeds": ["https://example.com/feed.xml"],
                     "max_depth": 1,
                 },
                 {"url": "https://example.org", "enabled": False},
@@ -32,8 +33,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual([seed.platform for seed in settings.search_seeds], ["x", "google"])
         self.assertEqual(settings.search_seeds[0].include_domains, ["x.com", "twitter.com"])
         self.assertEqual(settings.crawl_sites[0].name, "Tech blog")
+        self.assertEqual(settings.crawl_sites[0].provider, "fallback")
         self.assertEqual(settings.crawl_sites[0].limit, 5)
         self.assertEqual(settings.crawl_sites[0].include_paths, ["/blog/*"])
+        self.assertEqual(settings.crawl_sites[0].rss_feeds, ["https://example.com/feed.xml"])
         self.assertEqual(settings.crawl_sites[0].max_depth, 1)
         self.assertFalse(settings.crawl_sites[1].enabled)
 
