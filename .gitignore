@@ -10,9 +10,9 @@ __pycache__/
 .firecrawl/
 data/*.db
 !data/techtember.db
-data/*.db-wal
-data/*.db-shm
+data/*.db-*
 data/*.sqlite
+data/*.sqlite-*
 data/raw/
 data/runs/
 dist/

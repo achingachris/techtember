@@ -7,16 +7,16 @@
 
 | Source | Mapped URLs | Representative result | Fit | Operating strategy |
 |---|---:|---|---|---|
-| Techmeme | 99 | Map works, but URLs are mostly dated snapshots/fragments | Medium | Scrape the current front page only |
-| TechCrunch | 100 | Cloudflare verification page | Low for direct crawl | Use search/RSS; keep configured crawl disabled |
-| The Verge `/tech` | 97 | Clean technology listing, about 48 KB | High | Bounded crawl of `/tech/*` |
-| Ars Technica | 100 | Clean AI listing with article links, about 27 KB | High | Crawl selected technology sections |
-| Hacker News | 100 | Clean structured front page with item URLs | High for discovery | Crawl `/item*`; store HN discussion context |
-| KrebsOnSecurity | 100 | Article content available, with advertising noise, about 49 KB | Medium-high | Crawl dated article paths and exclude WordPress noise |
-| TechCabal | 100 | Current article listing and dates, about 33 KB | High | Crawl dated article paths |
-| Techweez | 99 | Clean current article listing and dates, about 27 KB | High | Crawl dated article paths |
-| TLDR tech | 69 | Strong dated archive coverage from mapping | High | Crawl tech/AI/dev/infosec archive paths |
-| The Batch | 99 | Clean issue archive with dates and article links, about 14 KB | High | Crawl `/the-batch/*`, excluding tags/search |
+| Techmeme | 99 | Map works, but URLs are mostly dated snapshots/fragments | Medium | Firecrawl scrape of the current front page only |
+| TechCrunch | 100 | Cloudflare verification page | Low for direct crawl | Use RSS/search fallback; keep configured Firecrawl crawl disabled |
+| The Verge `/tech` | 97 | Clean technology listing, about 48 KB | High | RSS/HTTP fallback crawl of `/tech/*` |
+| Ars Technica | 100 | Clean AI listing with article links, about 27 KB | High | RSS/HTTP fallback crawl of selected technology sections |
+| Hacker News | 100 | Clean structured front page with item URLs | High for discovery | RSS/HTTP fallback crawl of `/item*` |
+| KrebsOnSecurity | 100 | Article content available, with advertising noise, about 49 KB | Medium-high | RSS/HTTP fallback crawl of dated article paths |
+| TechCabal | 100 | Current article listing and dates, about 33 KB | High | RSS/HTTP fallback crawl of dated article paths |
+| Techweez | 99 | Clean current article listing and dates, about 27 KB | High | RSS/HTTP fallback crawl of dated article paths |
+| TLDR tech | 69 | Strong dated archive coverage from mapping | High | RSS/HTTP fallback crawl of tech/AI/dev/infosec archive paths |
+| The Batch | 99 | Clean issue archive with dates and article links, about 14 KB | High | RSS/HTTP fallback crawl of `/the-batch/*`, excluding tags/search |
 
 The enabled scopes and limits are encoded in [`config/seeds.json`](../config/seeds.json). The initial configured run is intentionally bounded: most sources are capped at 15 pages, The Batch at 10, and Techmeme at one current-page scrape.
 
@@ -34,3 +34,7 @@ The enabled scopes and limits are encoded in [`config/seeds.json`](../config/see
 3. Inspect `data/runs/` and query results with `uv run techtember search ...`.
 4. Raise per-site limits only for sources producing useful article records.
 5. Add RSS/API adapters for X, YouTube, newsletters, and TechCrunch where direct crawling is weak.
+
+## Provider policy
+
+The configured provider is `fallback` unless a source is difficult enough to require Firecrawl. Fallback collection uses RSS/Atom first, then direct HTTP/HTML extraction. Set `provider: "firecrawl"` only for dynamic, browser-dependent, or access-challenged sources. A Firecrawl provider still falls back automatically when Firecrawl returns a credit, quota, or rate-limit error.

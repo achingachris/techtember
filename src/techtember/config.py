@@ -94,10 +94,12 @@ class CrawlSite:
     url: str
     enabled: bool = True
     mode: str = "crawl"
+    provider: str = "fallback"
     limit: Optional[int] = None
     min_relevance_score: Optional[float] = None
     include_paths: List[str] = field(default_factory=list)
     exclude_paths: List[str] = field(default_factory=list)
+    rss_feeds: List[str] = field(default_factory=list)
     max_depth: Optional[int] = None
     notes: str = ""
 
@@ -124,6 +126,10 @@ class Settings:
     operation_timeout_seconds: float = 300.0
     max_run_manifests: int = 200
     store_raw_json: bool = True
+    fallback_enabled: bool = True
+    fallback_timeout_seconds: float = 20.0
+    searxng_url: Optional[str] = None
+    force_fallback: bool = False
 
 
 def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Settings:
@@ -149,6 +155,15 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         if not isinstance(value, list):
             raise ValueError("Config value '%s' must be a list" % key)
         return [str(item).strip() for item in value if str(item).strip()]
+
+    def bool_value(value: Any, key: str) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in {"1", "true", "yes", "on"}:
+            return True
+        if isinstance(value, str) and value.strip().lower() in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError("Config value '%s' must be a boolean" % key)
 
     search_seeds: List[SearchSeed] = []
     configured_searches = config.get("search_terms", [])
@@ -207,12 +222,18 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         mode = str(entry.get("mode", "crawl")).strip().lower() or "crawl"
         if mode not in {"crawl", "scrape"}:
             raise ValueError("crawl_sites[%d].mode must be 'crawl' or 'scrape'" % index)
+        provider = str(entry.get("provider", "fallback")).strip().lower() or "fallback"
+        if provider not in {"fallback", "firecrawl"}:
+            raise ValueError(
+                "crawl_sites[%d].provider must be 'fallback' or 'firecrawl'" % index
+            )
         crawl_sites.append(
             CrawlSite(
                 name=str(entry.get("name", url)).strip() or url,
                 url=url,
                 enabled=bool(entry.get("enabled", True)),
                 mode=mode,
+                provider=provider,
                 limit=(int(entry["limit"]) if entry.get("limit") is not None else None),
                 min_relevance_score=(
                     float(entry["min_relevance_score"])
@@ -225,6 +246,7 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
                 exclude_paths=domain_list(
                     entry.get("exclude_paths"), "crawl_sites.exclude_paths"
                 ),
+                rss_feeds=domain_list(entry.get("rss_feeds"), "crawl_sites.rss_feeds"),
                 max_depth=(
                     int(entry["max_depth"]) if entry.get("max_depth") is not None else None
                 ),
@@ -251,4 +273,22 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         operation_timeout_seconds=float(config.get("operation_timeout_seconds", 300.0)),
         max_run_manifests=int(config.get("max_run_manifests", 200)),
         store_raw_json=bool(config.get("store_raw_json", True)),
+        fallback_enabled=bool_value(
+            os.getenv("TECHTEMBER_FALLBACK_ENABLED", config.get("fallback_enabled", True)),
+            "fallback_enabled",
+        ),
+        fallback_timeout_seconds=float(
+            os.getenv(
+                "TECHTEMBER_FALLBACK_TIMEOUT_SECONDS",
+                config.get("fallback_timeout_seconds", 20),
+            )
+        ),
+        searxng_url=(
+            str(os.getenv("TECHTEMBER_SEARXNG_URL", config.get("searxng_url", ""))).strip()
+            or None
+        ),
+        force_fallback=bool_value(
+            os.getenv("TECHTEMBER_FORCE_FALLBACK", config.get("force_fallback", False)),
+            "force_fallback",
+        ),
     )

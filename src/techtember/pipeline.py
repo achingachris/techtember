@@ -1,7 +1,7 @@
 """Collection orchestration for Techtember."""
 
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Set, Union
+from typing import Any, Iterable, List, Optional, Set, Union
 from urllib.parse import urlsplit
 
 from .config import SearchSeed, render_search_query
@@ -58,6 +58,17 @@ class TechtemberPipeline:
         self.exclude_domains = list(exclude_domains)
         self.include_domains = list(include_domains)
         self.store_raw = store_raw
+
+    def with_client(self, client: Any) -> "TechtemberPipeline":
+        """Return a pipeline sharing storage and rules but using another provider."""
+
+        return TechtemberPipeline(
+            client=client,
+            storage=self.storage,
+            terms=self.terms,
+            exclude_domains=self.exclude_domains,
+            include_domains=self.include_domains,
+        )
 
     def _accept(self, url: str) -> bool:
         return bool(url) and not domain_matches(url, self.exclude_domains)
@@ -166,6 +177,7 @@ class TechtemberPipeline:
         include_paths: Iterable[str] = (),
         exclude_paths: Iterable[str] = (),
         max_depth: Optional[int] = None,
+        source: str = "crawl",
     ) -> RunSummary:
         summary = RunSummary()
         try:
@@ -181,7 +193,7 @@ class TechtemberPipeline:
                 for page in pages:
                     try:
                         summary.fetched += 1
-                        if self.ingest_page(page, source="crawl", min_score=min_score):
+                        if self.ingest_page(page, source=source, min_score=min_score):
                             summary.stored += 1
                         else:
                             summary.skipped += 1

@@ -87,7 +87,9 @@
       "url": "https://techmeme.com",
       "enabled": true,
       "mode": "scrape",
+      "provider": "firecrawl",
       "limit": 1,
+      "rss_feeds": ["https://techmeme.com/feed.xml"],
       "notes": "Use the current front page only; the map contains dated archive and fragment URLs."
     },
     {
@@ -95,9 +97,11 @@
       "url": "https://techcrunch.com/",
       "enabled": false,
       "mode": "crawl",
+      "provider": "firecrawl",
       "limit": 10,
+      "rss_feeds": ["https://techcrunch.com/feed/"],
       "include_paths": ["/category/artificial-intelligence/*", "/category/startups/*", "/category/security/*"],
-      "exclude_paths": ["/cdn-cgi/*", "/video/*", "/podcasts/*", "/events/*", "/sitemap*"] ,
+      "exclude_paths": ["/cdn-cgi/*", "/video/*", "/podcasts/*", "/events/*", "/sitemap*"],
       "max_depth": 1,
       "notes": "Disabled: representative scrape returned a Cloudflare verification page; use search/RSS until access is stable."
     },
@@ -106,7 +110,9 @@
       "url": "https://www.theverge.com/tech",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": ["https://www.theverge.com/rss/index.xml"],
       "include_paths": ["/tech/*"],
       "exclude_paths": ["/auth/*", "/subscribe*", "/video/*", "/podcasts/*"],
       "max_depth": 1
@@ -116,7 +122,9 @@
       "url": "https://arstechnica.com/",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": ["https://feeds.arstechnica.com/arstechnica/index"],
       "include_paths": ["/ai/*", "/gadgets/*", "/tech-policy/*", "/security/*"],
       "exclude_paths": ["/civis/*", "/sitemap*", "/post_tag-sitemap*"],
       "max_depth": 2
@@ -126,7 +134,9 @@
       "url": "https://news.ycombinator.com/news",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": ["https://news.ycombinator.com/rss"],
       "include_paths": ["/item*"] ,
       "exclude_paths": ["/login*", "/user*", "/from*", "/submit*", "/newest*", "/ask*", "/show*", "/jobs*"],
       "max_depth": 1,
@@ -137,7 +147,9 @@
       "url": "https://krebsonsecurity.com/",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": ["https://krebsonsecurity.com/feed/"],
       "include_paths": ["/20*/*"],
       "exclude_paths": ["/feed*", "/comments/*", "/wp-*"],
       "max_depth": 1
@@ -147,7 +159,9 @@
       "url": "https://techcabal.com/",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": ["https://techcabal.com/feed/"],
       "include_paths": ["/20*/*"],
       "exclude_paths": ["/sitemap*", "/category/*", "/tag/*", "/author/*"],
       "max_depth": 1
@@ -157,7 +171,9 @@
       "url": "https://techweez.com/",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": ["https://techweez.com/feed/"],
       "include_paths": ["/20*/*"],
       "exclude_paths": ["/category/*", "/tag/*", "/author/*", "/wp-*"],
       "max_depth": 1
@@ -167,7 +183,9 @@
       "url": "https://tldr.tech/tech",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 15,
+      "rss_feeds": [],
       "include_paths": ["/tech/*", "/ai/*", "/dev/*", "/infosec/*"],
       "exclude_paths": ["/subscribe*", "/login*"],
       "max_depth": 1
@@ -177,7 +195,9 @@
       "url": "https://www.deeplearning.ai/the-batch/",
       "enabled": true,
       "mode": "crawl",
+      "provider": "fallback",
       "limit": 10,
+      "rss_feeds": ["https://www.deeplearning.ai/the-batch/feed/"],
       "include_paths": ["/the-batch/*"],
       "exclude_paths": ["/the-batch/tag/*", "/the-batch/search*"],
       "max_depth": 1
@@ -244,5 +264,9 @@
   "database_path": "data/techtember.db",
   "max_search_results": 50,
   "max_crawl_pages": 100,
-  "min_relevance_score": 0.0
+  "min_relevance_score": 0.0,
+  "fallback_enabled": true,
+  "fallback_timeout_seconds": 20,
+  "searxng_url": "",
+  "force_fallback": false
 }
