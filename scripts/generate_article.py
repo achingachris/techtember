@@ -64,20 +64,34 @@ def _today() -> str:
     return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
 
-def _pages_for_day(db_path: Path, day: str):
+def _pages_for_day(db_path: Path, day: str, by_published: bool = False):
     connection = sqlite3.connect(str(db_path))
     connection.row_factory = sqlite3.Row
     try:
-        rows = connection.execute(
-            """
-            SELECT url, title, description, markdown, relevance_score, source
-            FROM pages
-            WHERE substr(fetched_at, 1, 10) = ?
-            ORDER BY relevance_score DESC, fetched_at DESC
-            LIMIT ?
-            """,
-            (day, MAX_PAGES),
-        ).fetchall()
+        if by_published:
+            # published_at mixes ISO dates and RFC 822 dates ("Mon, 01 Sep 2026 ...").
+            rfc = dt.date.fromisoformat(day).strftime("%d %b %Y")
+            rows = connection.execute(
+                """
+                SELECT url, title, description, markdown, relevance_score, source
+                FROM pages
+                WHERE substr(published_at, 1, 10) = ? OR published_at LIKE ?
+                ORDER BY relevance_score DESC, fetched_at DESC
+                LIMIT ?
+                """,
+                (day, "%%%s%%" % rfc, MAX_PAGES),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT url, title, description, markdown, relevance_score, source
+                FROM pages
+                WHERE substr(fetched_at, 1, 10) = ?
+                ORDER BY relevance_score DESC, fetched_at DESC
+                LIMIT ?
+                """,
+                (day, MAX_PAGES),
+            ).fetchall()
     finally:
         connection.close()
     return rows
@@ -222,9 +236,9 @@ def _generate(model: str, user_prompt: str, bundle_dir: Path, extra_meta: dict) 
 
 def _run_article(args) -> Path:
     day = args.date or _today()
-    pages = _pages_for_day(Path(args.db), day)
+    pages = _pages_for_day(Path(args.db), day, by_published=args.published)
     if not pages:
-        print("No pages fetched on %s; skipping article." % day)
+        print("No pages found for %s; skipping article." % day)
         raise SystemExit(0)
 
     sources = []
@@ -290,6 +304,11 @@ def main() -> int:
     parser.add_argument("--articles-dir", default="articles")
     parser.add_argument("--date", default=None, help="ISO date override (default: today UTC)")
     parser.add_argument("--run-label", default="1", help="Run number within the day")
+    parser.add_argument(
+        "--published",
+        action="store_true",
+        help="Select pages by publication date instead of fetch date (for backfills)",
+    )
     parser.add_argument("--model", default=os.getenv("ARTICLE_MODEL", DEFAULT_MODEL))
     args = parser.parse_args()
 
@@ -297,11 +316,10 @@ def main() -> int:
         os.getenv(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")
     ):
         print(
-            "COPILOT_GITHUB_TOKEN (or GH_TOKEN/GITHUB_TOKEN) is required for the "
-            "Copilot CLI",
+            "Warning: no COPILOT_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN set; relying on "
+            "the Copilot CLI's own login session.",
             file=sys.stderr,
         )
-        return 2
 
     if args.mode == "run":
         path = _run_article(args)
