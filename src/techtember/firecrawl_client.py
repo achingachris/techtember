@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, TypeV
 
 from .models import FetchedPage, SearchHit
 
-
 T = TypeVar("T")
 
 
@@ -162,11 +161,7 @@ class FirecrawlClient:
     ) -> List[SearchHit]:
         kwargs: Dict[str, Any] = {"limit": limit}
         search_query = _add_domain_filters(query, include_domains or [])
-        try:
-            result = self._call(self._client.search, search_query, **kwargs)
-        except TypeError:
-            # Some older SDKs expose fewer optional parameters than the current client.
-            result = self._call(self._client.search, search_query, limit=limit)
+        result = self._call(self._client.search, search_query, **kwargs)
         hits: List[SearchHit] = []
         for item in _results(result, "web"):
             item = _mapping(item)

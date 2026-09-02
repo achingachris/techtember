@@ -1,7 +1,7 @@
 """Data models shared by the collection, normalization, and storage layers."""
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 @dataclass

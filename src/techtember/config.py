@@ -7,7 +7,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-
 DEFAULT_TERMS = [
     "technology",
     "software",
@@ -50,7 +49,10 @@ def load_dotenv(path: Path) -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        value = value.strip().strip("'\"")
+        value = value.strip()
+        # Only remove one matched pair of surrounding quotes.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
         if key and key not in os.environ:
             os.environ[key] = value
 
@@ -110,6 +112,7 @@ class Settings:
     max_retries: int = 2
     backoff_seconds: float = 1.0
     request_interval_seconds: float = 0.25
+    store_raw_json: bool = True
 
 
 def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Settings:
@@ -151,6 +154,9 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         if not query:
             raise ValueError("search_terms[%d] is missing query" % index)
         platform = str(entry.get("platform", "web")).strip().lower() or "web"
+        if platform == "twitter":
+            # Canonicalize the alias so platform filters behave consistently.
+            platform = "x"
         include_domains = domain_list(entry.get("include_domains"), "search_terms.include_domains")
         if not include_domains:
             include_domains = list(platform_domains.get(platform, []))
@@ -231,4 +237,5 @@ def load_settings(config_path: Path, db_override: Optional[Path] = None) -> Sett
         max_retries=int(config.get("max_retries", 2)),
         backoff_seconds=float(config.get("backoff_seconds", 1.0)),
         request_interval_seconds=float(config.get("request_interval_seconds", 0.25)),
+        store_raw_json=bool(config.get("store_raw_json", True)),
     )

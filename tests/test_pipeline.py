@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from techtember.models import FetchedPage, SearchHit
-from techtember.pipeline import TechtemberPipeline
+from techtember.pipeline import TechtemberPipeline, domain_matches
 from techtember.storage import Storage
 
 
@@ -47,6 +47,15 @@ class FakeClient:
 
 
 class PipelineTests(unittest.TestCase):
+    def test_domain_matches_strips_www_prefix_only(self):
+        self.assertTrue(domain_matches("https://www.wired.com/a", ["wired.com"]))
+        self.assertTrue(domain_matches("https://blog.wired.com/a", ["wired.com"]))
+        self.assertTrue(domain_matches("https://wired.com/a", ["www.wired.com"]))
+        # "weather.com" must not lose leading w/. characters.
+        self.assertTrue(domain_matches("https://weather.com/a", ["weather.com"]))
+        self.assertFalse(domain_matches("https://ired.com/a", ["wired.com"]))
+        self.assertFalse(domain_matches("https://notwired.com/a", ["wired.com"]))
+
     def test_discover_scrapes_and_stores_hits(self):
         with tempfile.TemporaryDirectory() as directory:
             with Storage(Path(directory) / "test.db") as storage:

@@ -140,6 +140,7 @@ def _pipeline(args: argparse.Namespace):
         terms=settings.terms,
         exclude_domains=settings.exclude_domains,
         include_domains=settings.include_domains,
+        store_raw=settings.store_raw_json,
     )
     return settings, storage, pipeline
 
@@ -175,8 +176,11 @@ def _write_run_manifest(
 def _selected_search_seeds(
     settings: Settings, queries: List[str], platform: str
 ) -> List[SearchSeed]:
+    # "twitter" is an alias of "x"; seeds are stored canonically as "x".
+    if platform == "twitter":
+        platform = "x"
     if queries:
-        include_domains = ["x.com", "twitter.com"] if platform in {"x", "twitter"} else []
+        include_domains = ["x.com", "twitter.com"] if platform == "x" else []
         return [
             SearchSeed(
                 name=query,
@@ -188,11 +192,7 @@ def _selected_search_seeds(
         ]
     if platform == "all":
         return list(settings.search_seeds)
-    return [
-        seed
-        for seed in settings.search_seeds
-        if seed.platform == platform or (platform == "x" and seed.platform == "twitter")
-    ]
+    return [seed for seed in settings.search_seeds if seed.platform == platform]
 
 
 def _configured_site_min_score(
