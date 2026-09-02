@@ -50,4 +50,4 @@ none of these stories are about the same company, but they share a cause: agenti
 
 ---
 
-*Written and Authored by Chris, Edited and assisted by Claude*
+*Written and Authored by Chris, Edited and assisted by Copilot agent for techtember*

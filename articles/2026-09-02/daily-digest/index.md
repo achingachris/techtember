@@ -47,4 +47,4 @@ none of today's stories are about the same company, but they share a cause. agen
 
 ---
 
-*Written and Authored by Chris, Edited and assisted by Claude*
+*Written and Authored by Chris, Edited and assisted by Copilot agent for techtember*

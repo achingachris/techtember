@@ -40,4 +40,4 @@ there is a wall of near-identical coverage speculating about a foldable iPhone U
 
 ---
 
-*Written and Authored by Chris, Edited and assisted by Claude*
+*Written and Authored by Chris, Edited and assisted by Copilot agent for techtember*

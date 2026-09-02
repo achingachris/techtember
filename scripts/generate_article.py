@@ -28,7 +28,7 @@ DEFAULT_MODEL = os.getenv("ARTICLE_MODEL", "")  # empty = Copilot CLI's default 
 MAX_PAGES = 25
 EXCERPT_CHARS = 1200
 QA_SCRIPT = Path(__file__).parent / "article_writer" / "qa_check.py"
-FOOTER = "*Written and Authored by Chris, Edited and assisted by Claude*"
+FOOTER = "*Written and Authored by Chris, Edited and assisted by Copilot agent for techtember*"
 
 SYSTEM_PROMPT = """You write blog articles in Chris Achinga's voice for me.chrisdevcode.com.
 Chris is a Lead Software Engineer in Kenya (Mombasa/Nairobi), works with Python/Django,
