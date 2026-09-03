@@ -68,6 +68,7 @@ class TechtemberPipeline:
             terms=self.terms,
             exclude_domains=self.exclude_domains,
             include_domains=self.include_domains,
+            store_raw=self.store_raw,
         )
 
     def _accept(self, url: str) -> bool:

@@ -259,7 +259,7 @@ class OpenWebClient:
                 if "gzip" in response.headers.get("Content-Encoding", "").lower():
                     body = gzip.decompress(body)
                 return body, content_type, final_url
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except (HTTPError, URLError, TimeoutError, OSError) as exc:
             raise RuntimeError("HTTP fallback failed for %s: %s" % (url, exc)) from exc
 
     def _fetch(self, url: str) -> HttpResponse:
