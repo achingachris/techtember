@@ -66,6 +66,11 @@
       "query": "from:TechCrunch since:{start_date} lang:en"
     },
     {
+      "name": "MacRumors on X",
+      "platform": "x",
+      "query": "from:MacRumors since:{start_date} lang:en"
+    },
+    {
       "name": "Reuters technology on X",
       "platform": "x",
       "query": "from:ReutersTech since:{start_date} lang:en"
