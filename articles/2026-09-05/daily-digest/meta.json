@@ -1,5 +1,5 @@
 {
-  "title": "techtember daily: agentic security gets real, africa's data centers hit a wall, and everyone's AI went down at once",
+  "title": "the AI had one job, then the data center sneezed",
   "description": "three runs, one day, and a theme that won't let go: the smarter our infrastructure gets, the more it depends on water, power, and vendors you can't fully trust.",
   "tags": [
     "ai-infrastructure",
@@ -14,8 +14,8 @@
   "date": "2026-09-05",
   "type": "daily-digest",
   "source_articles": [
-    "run-2",
-    "run-4",
-    "run-5"
+    "edition-2",
+    "edition-4",
+    "edition-5"
   ]
 }

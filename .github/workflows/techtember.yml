@@ -1,8 +1,8 @@
-name: Techtember daily runs
+name: Techtember daily editions
 
 # 5 crawl+article runs per day, Kenyan time (EAT = UTC+3, no DST):
 #   06:00, 10:00, 14:00, 18:00, 22:00 EAT -> 03,07,11,15,19 UTC.
-# The 22:00 EAT run also generates the end-of-day digest article.
+# The 22:00 EAT edition also generates the end-of-day digest article.
 # Active through 30 September only (guarded in the first step).
 on:
   schedule:
@@ -53,7 +53,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Determine run number (EAT)
+      - name: Determine edition number (EAT)
         if: steps.window.outputs.active == 'true'
         id: slot
         run: |
@@ -65,7 +65,7 @@ jobs:
             1[6-9]) run=4 ;;   # 18:00 EAT
             *) run=5 ;;        # 22:00 EAT (final run of the day)
           esac
-          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "edition=$run" >> "$GITHUB_OUTPUT"
           if [[ "$run" == "5" || "${{ inputs.digest }}" == "true" ]]; then
             echo "digest=true" >> "$GITHUB_OUTPUT"
           else
@@ -92,13 +92,13 @@ jobs:
             exit "$code"
           fi
 
-      - name: Generate run article
+      - name: Generate edition article
         if: steps.window.outputs.active == 'true'
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
         run: |
           uv run python scripts/generate_article.py run \
-            --run-label "${{ steps.slot.outputs.run }}"
+            --edition-label "${{ steps.slot.outputs.edition }}"
 
       - name: Generate daily digest
         if: steps.window.outputs.active == 'true' && steps.slot.outputs.digest == 'true'
@@ -116,6 +116,6 @@ jobs:
             exit 0
           fi
           day=$(TZ=Africa/Nairobi date +%Y-%m-%d)
-          git commit -m "Techtember $day run ${{ steps.slot.outputs.run }}: crawl data and article"
+          git commit -m "Techtember $day edition ${{ steps.slot.outputs.edition }}: crawl data and article"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -1,6 +1,6 @@
 {
-  "title": "agentic AI's power bill and Africa's infrastructure moment: the day in review",
-  "description": "two crawl runs, one story: agents cost more to run than you think, and Africa is finally building the plumbing to run its own share of them.",
+  "title": "the GPUs sent Africa a power bill, and Africa found the extension cord",
+  "description": "two crawl editions, one story: agents cost more to run than you think, and Africa is finally building the plumbing to run its own share of them.",
   "tags": [
     "agentic-ai",
     "africa-tech",
@@ -13,7 +13,7 @@
   "date": "2026-09-02",
   "type": "daily-digest",
   "source_articles": [
-    "run-4",
-    "run-5"
+    "edition-4",
+    "edition-5"
   ]
 }

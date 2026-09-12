@@ -1,6 +1,6 @@
 {
-  "title": "compute, chaos, and courts: what today's AI news actually means for you",
-  "description": "three crawl runs, one busy Thursday: agentic AI grows up, the big chatbots all fell over at once, and Kenya's courts remind platforms who's in charge. here's the day, stitched together.",
+  "title": "compute, chaos, and courtroom drama: the robots need a lawyer",
+  "description": "three crawl editions, one busy Thursday: agentic AI grows up, the big chatbots all fell over at once, and Kenya's courts remind platforms who's in charge. here's the day, stitched together.",
   "tags": [
     "ai",
     "cybersecurity",
@@ -14,8 +14,8 @@
   "date": "2026-09-04",
   "type": "daily-digest",
   "source_articles": [
-    "run-2",
-    "run-4",
-    "run-5"
+    "edition-2",
+    "edition-4",
+    "edition-5"
   ]
 }

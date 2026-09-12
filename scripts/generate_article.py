@@ -6,8 +6,8 @@ technical-tutorial voice, page bundles (index.md), no YAML front matter, no H1,
 no em/en dashes, attribution footer, and a mechanical QA pass via qa_check.py.
 
 Modes:
-    run    - write one article covering pages fetched today (per crawl run)
-    digest - write the end-of-day article referencing today's run articles
+    run    - write one article covering pages fetched today (per crawl edition)
+    digest - write the end-of-day article referencing today's edition articles
 
 Articles are written by the GitHub Copilot CLI agent (npm i -g @github/copilot)
 running in programmatic mode, billed to the repo owner's Copilot subscription.
@@ -28,6 +28,7 @@ DEFAULT_MODEL = os.getenv("ARTICLE_MODEL", "")  # empty = Copilot CLI's default 
 MAX_PAGES = 25
 EXCERPT_CHARS = 1200
 QA_SCRIPT = Path(__file__).parent / "article_writer" / "qa_check.py"
+DAILY_INGEST_NAME = "daily-ingest"
 FOOTER = "*Written and Authored by Chris, Edited and assisted by Copilot agent for techtember*"
 
 SYSTEM_PROMPT = """You write blog articles in Chris Achinga's voice for me.chrisdevcode.com.
@@ -57,7 +58,7 @@ Respond with ONLY a JSON object (no markdown fence around it) with these keys:
   "description": a short teaser (one sentence, playful is fine),
   "tags": array of 3-6 lowercase hyphen-separated tags,
   "body": the full article body in plain markdown (no front matter, no H1),
-          ending with a 'sources' or 'today's runs' H2 section as instructed."""
+          ending with a 'sources' or 'today's editions' H2 section as instructed."""
 
 
 def _today() -> str:
@@ -236,6 +237,8 @@ def _generate(model: str, user_prompt: str, bundle_dir: Path, extra_meta: dict) 
 
 def _run_article(args) -> Path:
     day = args.date or _today()
+    ingest_dir = Path(args.articles_dir) / day / DAILY_INGEST_NAME
+    _write_daily_ingest_manifest(ingest_dir, day, args.edition_label, 0)
     pages = _pages_for_day(Path(args.db), day, by_published=args.published)
     if not pages:
         print("No pages found for %s; skipping article." % day)
@@ -249,50 +252,59 @@ def _run_article(args) -> Path:
             % (row["title"] or row["url"], row["url"], row["description"] or "-", excerpt)
         )
     user_prompt = (
-        "Today is %s (crawl run %s of the day). Below are %d web pages collected by "
-        "Chris's automated technology crawler during this run window. Write ONE cohesive "
+        "Today is %s (crawl edition %s of the day). Below are %d web pages collected by "
+        "Chris's automated technology crawler during this edition window. Write ONE cohesive "
         "technical article (600-1000 words) that synthesizes the most interesting and "
-        "technically substantive themes for developers. Group related items, explain why "
-        "they matter to engineers, and link every claim to its source URL inline. End the "
+        "technically substantive themes for developers. Technology is broader than AI agents: "
+        "actively look for meaningful coverage of hardware, consumer devices, software, "
+        "open source, security, telecom, fintech, science, climate, space, and startups. "
+        "Do not force an AI angle or make agents the default subject. Group related items, "
+        "explain why they matter to engineers, and link every claim to its source URL inline. End the "
         "body with an H2 'sources' section listing all URLs used.\n\n%s"
-        % (day, args.run_label, len(pages), "\n\n".join(sources))
+        % (day, args.edition_label, len(pages), "\n\n".join(sources))
     )
-    bundle_dir = Path(args.articles_dir) / day / ("run-%s" % args.run_label)
+    _write_daily_ingest_manifest(ingest_dir, day, args.edition_label, len(pages))
+    bundle_dir = Path(args.articles_dir) / day / ("edition-%s" % args.edition_label)
     return _generate(
         args.model,
         user_prompt,
         bundle_dir,
-        {"date": day, "run": args.run_label, "pages": len(pages)},
+        {"date": day, "edition": args.edition_label, "pages": len(pages)},
     )
 
 
 def _digest_article(args) -> Path:
     day = args.date or _today()
     day_dir = Path(args.articles_dir) / day
-    run_files = sorted(day_dir.glob("run-*/index.md")) if day_dir.exists() else []
-    if not run_files:
-        print("No run articles found for %s; skipping digest." % day)
+    edition_files = sorted(day_dir.glob("edition-*/index.md")) if day_dir.exists() else []
+    if not edition_files:
+        print("No edition articles found for %s; skipping digest." % day)
         raise SystemExit(0)
 
     previous = []
-    for path in run_files:
+    for path in edition_files:
         previous.append(
             "## Article: %s\n\n%s" % (path.parent.name, path.read_text(encoding="utf-8"))
         )
     user_prompt = (
         "Today is %s. Below are the %d articles generated earlier today from Chris's "
-        "scheduled crawl runs. Write the FINAL daily article (800-1200 words): a polished "
+        "scheduled crawl editions. Write the FINAL daily article (800-1200 words): a polished "
         "editorial that synthesizes the whole day, highlights the most important "
-        "developments, notes how the story evolved across runs, and references the earlier "
-        "articles by their run name (e.g. 'as covered in run-1') as well as the original "
-        "source URLs they cite. End the body with an H2 \"today's runs\" section naming "
-        "each run article.\n\n%s" % (day, len(run_files), "\n\n---\n\n".join(previous))
+        "developments, notes how the story evolved across editions, and references the earlier "
+        "articles. Keep the day balanced: AI agents may be important, but give equal editorial "
+        "attention to other well-supported technology areas such as hardware, software, "
+        "security, infrastructure, open source, science, and consumer technology. Do not "
+        "invent a connection to agents when the evidence does not support one. "
+        "Reference earlier articles by their edition name (e.g. 'as covered in edition-1') as well as the original "
+        "source URLs they cite. Give the article a funny, memorable title. End the body with "
+        "an H2 \"today's editions\" section naming each edition article.\n\n%s"
+        % (day, len(edition_files), "\n\n---\n\n".join(previous))
     )
     bundle_dir = day_dir / "daily-digest"
     extra_meta = {
         "date": day,
         "type": "daily-digest",
-        "source_articles": [p.parent.name for p in run_files],
+        "source_articles": [p.parent.name for p in edition_files],
     }
     return _generate(args.model, user_prompt, bundle_dir, extra_meta)
 
@@ -303,11 +315,34 @@ def main() -> int:
     parser.add_argument("--db", default="data/techtember.db")
     parser.add_argument("--articles-dir", default="articles")
     parser.add_argument("--date", default=None, help="ISO date override (default: today UTC)")
-    parser.add_argument("--run-label", default="1", help="Run number within the day")
+    parser.add_argument("--edition-label", default="1", help="Edition number within the day")
     parser.add_argument(
         "--published",
         action="store_true",
         help="Select pages by publication date instead of fetch date (for backfills)",
+    )
+
+
+def _write_daily_ingest_manifest(
+    ingest_dir: Path, day: str, edition: str, page_count: int
+) -> None:
+    ingest_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = ingest_dir / "manifest.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    else:
+        manifest = {"date": day, "editions": []}
+    editions = [item for item in manifest["editions"] if item["edition"] != edition]
+    editions.append(
+        {
+            "edition": edition,
+            "pages": page_count,
+            "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
+        }
+    )
+    manifest["editions"] = sorted(editions, key=lambda item: item["edition"])
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     parser.add_argument("--model", default=os.getenv("ARTICLE_MODEL", DEFAULT_MODEL))
     args = parser.parse_args()

@@ -2,7 +2,7 @@
   "queries": [
     "Techtember technology",
     "software engineering trends",
-    "developer tools and AI"
+    "developer tools, hardware, science, and AI"
   ],
   "search_terms": [
     {
@@ -44,6 +44,26 @@
       "name": "Security incidents",
       "platform": "google",
       "query": "(zero-day OR CVE OR ransomware OR \"supply-chain attack\") after:{start_date}"
+    },
+    {
+      "name": "Hardware, mobile, and consumer technology",
+      "platform": "google",
+      "query": "(smartphone OR laptop OR processor OR camera OR gaming OR wearable OR robotics OR drone) (launch OR review OR release OR benchmark) after:{start_date}"
+    },
+    {
+      "name": "Open source and developer platforms",
+      "platform": "google",
+      "query": "(\"open source\" OR Linux OR GitHub OR PostgreSQL OR Kubernetes OR browser OR JavaScript) (release OR project OR funding OR security) after:{start_date}"
+    },
+    {
+      "name": "Science, climate, and space technology",
+      "platform": "google",
+      "query": "(space OR satellite OR climate OR energy OR battery OR biotech OR quantum) (launch OR research OR breakthrough OR investment) after:{start_date}"
+    },
+    {
+      "name": "Telecom, fintech, and digital infrastructure",
+      "platform": "google",
+      "query": "(telecom OR 5G OR fiber OR fintech OR payments OR broadband OR cloud infrastructure) (launch OR investment OR regulation OR outage) after:{start_date}"
     },
     {
       "name": "Africa and East Africa technology",

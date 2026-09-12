@@ -1,5 +1,5 @@
 {
-  "title": "agentic security, the global data center land grab, and why your ai stack needs a plan b",
+  "title": "agentic security, server farms, and your stack's emergency parachute",
   "description": "three chatbots went down together, everyone's building agents to fight agents, and the data centers underneath it all are already fighting over water. here's the day in one piece.",
   "tags": [
     "ai",
@@ -13,8 +13,8 @@
   "date": "2026-09-06",
   "type": "daily-digest",
   "source_articles": [
-    "run-2",
-    "run-4",
-    "run-5"
+    "edition-2",
+    "edition-4",
+    "edition-5"
   ]
 }
