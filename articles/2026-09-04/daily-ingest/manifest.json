@@ -1,1 +1,4 @@
-{"date":"2026-09-04","editions":[{"edition":"1"},{"edition":"2"},{"edition":"4"},{"edition":"5"}]}
+{
+  "date": "2026-09-04",
+  "ingest_count": 4
+}

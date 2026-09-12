@@ -238,7 +238,8 @@ def _generate(model: str, user_prompt: str, bundle_dir: Path, extra_meta: dict) 
 def _run_article(args) -> Path:
     day = args.date or _today()
     ingest_dir = Path(args.articles_dir) / day / DAILY_INGEST_NAME
-    _write_daily_ingest_manifest(ingest_dir, day, args.edition_label, 0)
+    batch_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+    _write_daily_ingest_manifest(ingest_dir, day, batch_id, 0)
     pages = _pages_for_day(Path(args.db), day, by_published=args.published)
     if not pages:
         print("No pages found for %s; skipping article." % day)
@@ -263,7 +264,7 @@ def _run_article(args) -> Path:
         "body with an H2 'sources' section listing all URLs used.\n\n%s"
         % (day, args.edition_label, len(pages), "\n\n".join(sources))
     )
-    _write_daily_ingest_manifest(ingest_dir, day, args.edition_label, len(pages))
+    _write_daily_ingest_manifest(ingest_dir, day, batch_id, len(pages))
     bundle_dir = Path(args.articles_dir) / day / ("edition-%s" % args.edition_label)
     return _generate(
         args.model,
@@ -324,23 +325,25 @@ def main() -> int:
 
 
 def _write_daily_ingest_manifest(
-    ingest_dir: Path, day: str, edition: str, page_count: int
+    ingest_dir: Path, day: str, batch_id: str, page_count: int
 ) -> None:
+    """Track ingestion batches for a day. Deliberately generic: no 'edition' or
+    'run' labeling appears in this file, only opaque batch ids and page counts."""
     ingest_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = ingest_dir / "manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     else:
-        manifest = {"date": day, "editions": []}
-    editions = [item for item in manifest["editions"] if item["edition"] != edition]
-    editions.append(
+        manifest = {"date": day, "ingestions": []}
+    ingestions = [item for item in manifest["ingestions"] if item["id"] != batch_id]
+    ingestions.append(
         {
-            "edition": edition,
+            "id": batch_id,
             "pages": page_count,
             "generated": dt.datetime.now(dt.timezone.utc).isoformat(),
         }
     )
-    manifest["editions"] = sorted(editions, key=lambda item: item["edition"])
+    manifest["ingestions"] = sorted(ingestions, key=lambda item: item["id"])
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
