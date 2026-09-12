@@ -1,18 +1,27 @@
 name: Techtember daily editions
 
-# 5 crawl+article runs per day, Kenyan time (EAT = UTC+3, no DST):
+# 5 crawl+article editions per day, Kenyan time (EAT = UTC+3, no DST):
 #   06:00, 10:00, 14:00, 18:00, 22:00 EAT -> 03,07,11,15,19 UTC.
 # The 22:00 EAT edition also generates the end-of-day digest article.
 # Active through 30 September only (guarded in the first step).
 on:
   schedule:
-    - cron: "0 3,7,11,15,19 * * *"
+    - cron: "0 3 * * *"
+    - cron: "0 7 * * *"
+    - cron: "0 11 * * *"
+    - cron: "0 15 * * *"
+    - cron: "0 19 * * *"
   workflow_dispatch:
     inputs:
       digest:
         description: "Also generate the daily digest"
         type: boolean
         default: false
+      edition:
+        description: "Edition number for a manual run"
+        type: choice
+        options: ["1", "2", "3", "4", "5"]
+        default: "5"
 
 permissions:
   contents: write
@@ -53,20 +62,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Determine edition number (EAT)
+      - name: Determine edition number from schedule
         if: steps.window.outputs.active == 'true'
         id: slot
         run: |
-          hour=$(TZ=Africa/Nairobi date +%H)
-          case "$hour" in
-            0[0-7]) run=1 ;;   # 06:00 EAT
-            0[8-9]|1[0-1]) run=2 ;;   # 10:00 EAT
-            1[2-5]) run=3 ;;   # 14:00 EAT
-            1[6-9]) run=4 ;;   # 18:00 EAT
-            *) run=5 ;;        # 22:00 EAT (final run of the day)
+          case "${{ github.event.schedule }}" in
+            "0 3 * * *") edition=1 ;;   # 06:00 EAT
+            "0 7 * * *") edition=2 ;;   # 10:00 EAT
+            "0 11 * * *") edition=3 ;;  # 14:00 EAT
+            "0 15 * * *") edition=4 ;;  # 18:00 EAT
+            "0 19 * * *") edition=5 ;;  # 22:00 EAT
+            "") edition="${{ inputs.edition }}" ;;
+            *)
+              echo "Unknown schedule: ${{ github.event.schedule }}"
+              exit 1
+              ;;
           esac
-          echo "edition=$run" >> "$GITHUB_OUTPUT"
-          if [[ "$run" == "5" || "${{ inputs.digest }}" == "true" ]]; then
+          echo "edition=$edition" >> "$GITHUB_OUTPUT"
+          if [[ "$edition" == "5" || "${{ inputs.digest }}" == "true" ]]; then
             echo "digest=true" >> "$GITHUB_OUTPUT"
           else
             echo "digest=false" >> "$GITHUB_OUTPUT"
