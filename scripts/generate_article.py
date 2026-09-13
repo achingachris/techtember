@@ -322,6 +322,24 @@ def main() -> int:
         action="store_true",
         help="Select pages by publication date instead of fetch date (for backfills)",
     )
+    parser.add_argument("--model", default=os.getenv("ARTICLE_MODEL", DEFAULT_MODEL))
+    args = parser.parse_args()
+
+    if not any(
+        os.getenv(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")
+    ):
+        print(
+            "Warning: no COPILOT_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN set; relying on "
+            "the Copilot CLI's own login session.",
+            file=sys.stderr,
+        )
+
+    if args.mode == "run":
+        path = _run_article(args)
+    else:
+        path = _digest_article(args)
+    print("Wrote %s" % path)
+    return 0
 
 
 def _write_daily_ingest_manifest(
@@ -347,24 +365,6 @@ def _write_daily_ingest_manifest(
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    parser.add_argument("--model", default=os.getenv("ARTICLE_MODEL", DEFAULT_MODEL))
-    args = parser.parse_args()
-
-    if not any(
-        os.getenv(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")
-    ):
-        print(
-            "Warning: no COPILOT_GITHUB_TOKEN/GH_TOKEN/GITHUB_TOKEN set; relying on "
-            "the Copilot CLI's own login session.",
-            file=sys.stderr,
-        )
-
-    if args.mode == "run":
-        path = _run_article(args)
-    else:
-        path = _digest_article(args)
-    print("Wrote %s" % path)
-    return 0
 
 
 if __name__ == "__main__":
