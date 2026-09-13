@@ -1,16 +1,16 @@
 {
-  "title": "africa's data center boom, kenya's regulatory scramble, and why your smart TV is snitching on you",
-  "description": "data centers are landing in Nairobi and Cairo faster than KEMIS can register a single learner, and somehow your LG TV is the one keeping secrets.",
+  "title": "africa's data centers, kenya's regulators, and the week ai got weaponized",
+  "description": "nairobi got a new data center, kenya's regulators are busy, and someone used Claude to write fake grassroots posts. a roundup for engineers, not just news junkies.",
   "tags": [
+    "africa-tech",
+    "kenya",
     "data-centers",
-    "kenya-tech",
-    "cybersecurity",
+    "ai-security",
     "hardware",
-    "ai-safety",
-    "privacy"
+    "fintech"
   ],
   "author": "Chris Achinga",
-  "generated": "2026-09-13T07:16:51.635001+00:00",
+  "generated": "2026-09-13T14:53:00.173582+00:00",
   "date": "2026-09-13",
   "edition": "3",
   "pages": 25
